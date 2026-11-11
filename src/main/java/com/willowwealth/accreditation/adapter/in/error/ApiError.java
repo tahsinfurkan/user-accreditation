@@ -11,6 +11,7 @@ public enum ApiError {
     VALIDATION_FAILED(400, "Invalid request", "Some fields are missing or invalid. Please check them and try again."),
     MALFORMED_JSON(400, "Invalid request", "The request body is not valid JSON. Please send a valid JSON object."),
     RESOURCE_NOT_FOUND(404, "Resource not found", "The requested URL does not exist."),
+    USER_NOT_FOUND(404, "User not found", "We couldn't find any accreditation records for this user."),
     METHOD_NOT_ALLOWED(405, "Method not allowed", "This endpoint does not support the requested HTTP method."),
     NOT_ACCEPTABLE(406, "Not acceptable", "This endpoint only returns application/json."),
     REQUEST_TOO_LARGE(413, "Request too large", "The request body is larger than the allowed limit."),

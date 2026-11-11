@@ -1,0 +1,39 @@
+package com.willowwealth.accreditation.application.service;
+
+import com.willowwealth.accreditation.application.port.out.AccreditationRepository;
+import com.willowwealth.accreditation.domain.model.Accreditation;
+import com.willowwealth.accreditation.domain.model.AccreditationId;
+import com.willowwealth.accreditation.domain.model.AccreditationSummary;
+import com.willowwealth.accreditation.domain.model.UserId;
+
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+class InMemoryAccreditationRepository implements AccreditationRepository {
+
+    final Map<AccreditationId, Accreditation> byId = new HashMap<>();
+    int inserts;
+
+    @Override
+    public boolean exists(AccreditationId id) {
+        return byId.containsKey(id);
+    }
+
+    @Override
+    public void insert(Accreditation accreditation) {
+        byId.put(accreditation.id(), accreditation);
+        inserts++;
+    }
+
+    @Override
+    public List<AccreditationSummary> findSummariesByUserId(UserId userId) {
+        return byId.values().stream()
+                .filter(accreditation -> accreditation.userId().equals(userId))
+                .sorted(Comparator.comparing(Accreditation::createdAt))
+                .map(accreditation -> new AccreditationSummary(accreditation.id(), accreditation.type(),
+                        accreditation.status()))
+                .toList();
+    }
+}

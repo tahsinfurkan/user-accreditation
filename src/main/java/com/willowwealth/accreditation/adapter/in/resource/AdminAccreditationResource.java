@@ -28,8 +28,8 @@ public class AdminAccreditationResource {
     @POST
     @RunOnVirtualThread
     public RestResponse<AccreditationIdResponse> submit(
-            @Valid @NotNull(message = "must not be empty") SubmitAccreditationRequest request) {
-        var id = submitAccreditation.submit(requestMapper.toCommand(request));
+            @Valid @NotNull(message = "must not be empty") SubmitAccreditationRequest body) {
+        var id = submitAccreditation.submit(requestMapper.toCommand(body));
         return RestResponse.status(RestResponse.Status.ACCEPTED, new AccreditationIdResponse(id.value()));
     }
 }

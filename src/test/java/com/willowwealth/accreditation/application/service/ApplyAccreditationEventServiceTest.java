@@ -1,6 +1,5 @@
 package com.willowwealth.accreditation.application.service;
 
-import com.willowwealth.accreditation.application.port.out.AccreditationRepository;
 import com.willowwealth.accreditation.domain.event.AccreditationSubmitted;
 import com.willowwealth.accreditation.domain.model.Accreditation;
 import com.willowwealth.accreditation.domain.model.AccreditationId;
@@ -9,8 +8,6 @@ import com.willowwealth.accreditation.domain.model.UserId;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
 
 import static com.willowwealth.accreditation.domain.model.AccreditationStatus.PENDING;
@@ -19,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ApplyAccreditationEventServiceTest {
 
-    private final InMemoryAccreditations accreditations = new InMemoryAccreditations();
+    private final InMemoryAccreditationRepository accreditations = new InMemoryAccreditationRepository();
     private final ApplyAccreditationEventService service = new ApplyAccreditationEventService(accreditations);
 
     @Test
@@ -49,22 +46,5 @@ class ApplyAccreditationEventServiceTest {
         var document = new DocumentReference(UUID.randomUUID(), "2018.pdf", "application/pdf", 42, "c0ffee");
         return Accreditation.submit(AccreditationId.newId(), new UserId("g8NlYJnk7zK9BlB1J2Ebjs0AkhCTpE1V"),
                 BY_NET_WORTH, document, Instant.parse("2026-11-01T10:00:00Z"));
-    }
-
-    private static class InMemoryAccreditations implements AccreditationRepository {
-
-        private final Map<AccreditationId, Accreditation> byId = new HashMap<>();
-        private int inserts;
-
-        @Override
-        public boolean exists(AccreditationId id) {
-            return byId.containsKey(id);
-        }
-
-        @Override
-        public void insert(Accreditation accreditation) {
-            byId.put(accreditation.id(), accreditation);
-            inserts++;
-        }
     }
 }

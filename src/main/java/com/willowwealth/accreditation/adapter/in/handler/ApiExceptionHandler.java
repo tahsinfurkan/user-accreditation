@@ -11,6 +11,8 @@ import com.willowwealth.accreditation.adapter.in.filter.TraceIdFilter;
 import com.willowwealth.accreditation.adapter.in.response.ErrorResponse;
 import com.willowwealth.accreditation.adapter.in.response.FieldError;
 import com.willowwealth.accreditation.application.exception.EventPublicationException;
+import com.willowwealth.accreditation.domain.exception.AccreditationException;
+import com.willowwealth.accreditation.domain.exception.UserNotFoundException;
 import io.vertx.core.http.HttpServerRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -56,6 +58,14 @@ public class ApiExceptionHandler {
         }
         var errors = List.of(new FieldError(field, problemWith(exception)));
         return clientError(request, ApiError.VALIDATION_FAILED, errors, exception.getOriginalMessage());
+    }
+
+    @ServerExceptionMapper
+    public RestResponse<ErrorResponse> ruleBroken(AccreditationException exception, HttpServerRequest request) {
+        var error = switch (exception) {
+            case UserNotFoundException notFound -> ApiError.USER_NOT_FOUND;
+        };
+        return clientError(request, error, null, exception.getMessage());
     }
 
     @ServerExceptionMapper
@@ -111,16 +121,19 @@ public class ApiExceptionHandler {
                 .type(MediaType.APPLICATION_JSON_TYPE);
     }
 
-    // Violations name the Java path (submit.request.document.mimeType); clients only know the JSON names.
+    // Violations name the Java path (submit.body.document.mimeType); clients only know the JSON names.
+    // A violation on a parameter itself, like a missing body or a malformed path parameter, keeps its name.
     private static String fieldOf(ConstraintViolation<?> violation) {
-        var names = new ArrayList<String>();
+        var properties = new ArrayList<String>();
+        var parameter = "";
         for (var node : violation.getPropertyPath()) {
-            if (node.getKind() == ElementKind.PROPERTY) {
-                names.add(SNAKE_CASE.translate(node.getName()));
+            if (node.getKind() == ElementKind.PARAMETER) {
+                parameter = node.getName();
+            } else if (node.getKind() == ElementKind.PROPERTY) {
+                properties.add(SNAKE_CASE.translate(node.getName()));
             }
         }
-        // A violation on the parameter itself means there was no body at all.
-        return names.isEmpty() ? "body" : String.join(".", names);
+        return properties.isEmpty() ? parameter : String.join(".", properties);
     }
 
     private static String pathOf(JsonMappingException exception) {
