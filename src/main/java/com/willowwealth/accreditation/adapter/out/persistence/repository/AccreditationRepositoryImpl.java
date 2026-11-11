@@ -21,6 +21,7 @@ import jakarta.transaction.Synchronization;
 import jakarta.transaction.TransactionSynchronizationRegistry;
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -66,6 +67,18 @@ public class AccreditationRepositoryImpl
     @Override
     public boolean existsPendingFor(UserId userId) {
         return count("userId = ?1 and status = ?2", userId.value(), AccreditationStatus.PENDING) > 0;
+    }
+
+    // Keyset pagination: the consumer may expire rows while the job is still paging,
+    // which would shift an offset and make it skip rows.
+    @Override
+    public List<Accreditation> findConfirmedUpdatedBefore(Instant cutoff, Accreditation after, int limit) {
+        var order = Sort.by("updatedAt").and("id");
+        var query = after == null
+                ? find("status = ?1 and updatedAt < ?2", order, AccreditationStatus.CONFIRMED, cutoff)
+                : find("status = ?1 and updatedAt < ?2 and (updatedAt > ?3 or (updatedAt = ?3 and id > ?4))", order,
+                        AccreditationStatus.CONFIRMED, cutoff, after.updatedAt(), after.id().value());
+        return query.range(0, limit - 1).list().stream().map(mapper::toDomain).toList();
     }
 
     @Override

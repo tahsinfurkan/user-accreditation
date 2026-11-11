@@ -3,6 +3,7 @@ package com.willowwealth.accreditation.adapter.out.persistence.repository;
 import com.willowwealth.accreditation.adapter.out.persistence.RedisTestResource;
 import com.willowwealth.accreditation.domain.model.Accreditation;
 import com.willowwealth.accreditation.domain.model.AccreditationId;
+import com.willowwealth.accreditation.domain.model.AccreditationStatus;
 import com.willowwealth.accreditation.domain.model.AccreditationSummary;
 import com.willowwealth.accreditation.domain.model.UserId;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -12,9 +13,12 @@ import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static com.willowwealth.accreditation.domain.event.ChangeOrigin.ADMIN;
 import static com.willowwealth.accreditation.domain.model.AccreditationStatus.CONFIRMED;
@@ -100,6 +104,44 @@ class AccreditationRepositoryImplTest {
 
         assertThatThrownBy(() -> QuarkusTransaction.requiringNew().run(() -> repository.insert(pendingAccreditation(userId))))
                 .hasStackTraceContaining("ux_accreditation_pending_user");
+    }
+
+    @Test
+    void pagesThroughConfirmedAccreditationsUpdatedBeforeTheCutoff() {
+        // Far in the past, so rows written by other tests stay out of the result.
+        var start = Instant.parse("2001-01-01T00:00:00Z");
+        var oldest = insert(CONFIRMED, start);
+        // PostgreSQL orders uuids by their bytes, which is also the order of their text form.
+        var sameTime = Stream.of(insert(CONFIRMED, start.plusSeconds(60)), insert(CONFIRMED, start.plusSeconds(60)))
+                .sorted(Comparator.comparing(accreditation -> accreditation.id().toString()))
+                .toList();
+        insert(CONFIRMED, start.plus(Duration.ofDays(40)));
+        insert(PENDING, start);
+        var cutoff = start.plus(Duration.ofDays(30));
+
+        var firstPage = confirmedPage(cutoff, null, 2);
+        var secondPage = confirmedPage(cutoff, firstPage.getLast(), 2);
+
+        assertThat(firstPage).extracting(Accreditation::id).containsExactly(oldest.id(), sameTime.getFirst().id());
+        assertThat(secondPage).extracting(Accreditation::id).containsExactly(sameTime.getLast().id());
+    }
+
+    private Accreditation insert(AccreditationStatus status, Instant updatedAt) {
+        var accreditation = Accreditation.builder()
+                .id(AccreditationId.newId())
+                .userId(new UserId(UUID.randomUUID().toString().replace("-", "")))
+                .type(BY_INCOME)
+                .status(status)
+                .documentId(UUID.randomUUID())
+                .createdAt(updatedAt)
+                .updatedAt(updatedAt)
+                .build();
+        QuarkusTransaction.requiringNew().run(() -> repository.insert(accreditation));
+        return accreditation;
+    }
+
+    private List<Accreditation> confirmedPage(Instant cutoff, Accreditation after, int limit) {
+        return QuarkusTransaction.requiringNew().call(() -> repository.findConfirmedUpdatedBefore(cutoff, after, limit));
     }
 
     private boolean hasPending(UserId userId) {
