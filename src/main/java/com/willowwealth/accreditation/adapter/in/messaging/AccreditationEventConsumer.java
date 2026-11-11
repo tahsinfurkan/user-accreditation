@@ -23,7 +23,7 @@ public class AccreditationEventConsumer {
     public void consume(AccreditationEventMessage message) {
         try (var eventScope = MDC.putCloseable("event_id", String.valueOf(message.eventId()));
              var accreditationScope = MDC.putCloseable("accreditation_id", String.valueOf(message.accreditationId()))) {
-            applyAccreditationEvent.apply(mapper.toSubmitted(message));
+            applyAccreditationEvent.apply(mapper.toEvent(message));
         }
     }
 }

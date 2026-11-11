@@ -4,7 +4,7 @@ import com.willowwealth.accreditation.adapter.messaging.mapper.AccreditationEven
 import com.willowwealth.accreditation.adapter.messaging.message.AccreditationEventMessage;
 import com.willowwealth.accreditation.application.exception.EventPublicationException;
 import com.willowwealth.accreditation.application.port.out.AccreditationEventPublisher;
-import com.willowwealth.accreditation.domain.event.AccreditationSubmitted;
+import com.willowwealth.accreditation.domain.event.AccreditationEvent;
 import io.smallrye.reactive.messaging.MutinyEmitter;
 import io.smallrye.reactive.messaging.kafka.Record;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -32,7 +32,7 @@ public class AccreditationEventPublisherImpl implements AccreditationEventPublis
     }
 
     @Override
-    public void publish(AccreditationSubmitted event) {
+    public void publish(AccreditationEvent event) {
         var message = mapper.toMessage(event);
         try {
             // Keyed by user, so all events of one user land on the same partition and stay in order.

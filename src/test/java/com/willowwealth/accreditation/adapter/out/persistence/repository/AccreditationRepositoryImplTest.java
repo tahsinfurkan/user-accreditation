@@ -16,6 +16,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import static com.willowwealth.accreditation.domain.event.ChangeOrigin.ADMIN;
+import static com.willowwealth.accreditation.domain.model.AccreditationStatus.CONFIRMED;
 import static com.willowwealth.accreditation.domain.model.AccreditationStatus.PENDING;
 import static com.willowwealth.accreditation.domain.model.AccreditationType.BY_INCOME;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -64,6 +66,21 @@ class AccreditationRepositoryImplTest {
 
         assertThat(redis.key().exists("cache:user-accreditations:" + userId.value())).isTrue();
         assertThat(idsOf(summariesOf(userId))).containsExactly(first.id());
+    }
+
+    @Test
+    void updatesTheStatusAndEvictsTheCachedSummaries() {
+        var userId = new UserId(UUID.randomUUID().toString().replace("-", ""));
+        var accreditation = pendingAccreditation(userId);
+        QuarkusTransaction.requiringNew().run(() -> repository.insert(accreditation));
+        summariesOf(userId);
+
+        var confirmed = accreditation.apply(accreditation.changeStatus(CONFIRMED, ADMIN, Instant.now()));
+        QuarkusTransaction.requiringNew().run(() -> repository.update(confirmed));
+
+        assertThat(summariesOf(userId)).extracting(AccreditationSummary::status).containsExactly(CONFIRMED);
+        assertThat(QuarkusTransaction.requiringNew().call(() -> repository.findById(accreditation.id())))
+                .hasValueSatisfying(found -> assertThat(found.status()).isEqualTo(CONFIRMED));
     }
 
     @Test

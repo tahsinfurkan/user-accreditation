@@ -11,6 +11,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 class InMemoryAccreditationRepository implements AccreditationRepository {
 
@@ -23,9 +24,19 @@ class InMemoryAccreditationRepository implements AccreditationRepository {
     }
 
     @Override
+    public Optional<Accreditation> findById(AccreditationId id) {
+        return Optional.ofNullable(byId.get(id));
+    }
+
+    @Override
     public void insert(Accreditation accreditation) {
         byId.put(accreditation.id(), accreditation);
         inserts++;
+    }
+
+    @Override
+    public void update(Accreditation accreditation) {
+        byId.put(accreditation.id(), accreditation);
     }
 
     @Override

@@ -12,6 +12,8 @@ import com.willowwealth.accreditation.adapter.in.response.ErrorResponse;
 import com.willowwealth.accreditation.adapter.in.response.FieldError;
 import com.willowwealth.accreditation.application.exception.EventPublicationException;
 import com.willowwealth.accreditation.domain.exception.AccreditationException;
+import com.willowwealth.accreditation.domain.exception.AccreditationNotFoundException;
+import com.willowwealth.accreditation.domain.exception.InvalidStatusTransitionException;
 import com.willowwealth.accreditation.domain.exception.PendingAccreditationExistsException;
 import com.willowwealth.accreditation.domain.exception.UserNotFoundException;
 import io.vertx.core.http.HttpServerRequest;
@@ -65,7 +67,15 @@ public class ApiExceptionHandler {
     public RestResponse<ErrorResponse> ruleBroken(AccreditationException exception, HttpServerRequest request) {
         var error = switch (exception) {
             case UserNotFoundException notFound -> ApiError.USER_NOT_FOUND;
+            case AccreditationNotFoundException notFound -> ApiError.ACCREDITATION_NOT_FOUND;
             case PendingAccreditationExistsException pending -> ApiError.ACCREDITATION_ALREADY_PENDING;
+            // The client is told what its accreditation's current status allows.
+            case InvalidStatusTransitionException invalid -> switch (invalid.getCurrentStatus()) {
+                case PENDING -> ApiError.PENDING_CHANGE_NOT_ALLOWED;
+                case CONFIRMED -> ApiError.CONFIRMED_CHANGE_NOT_ALLOWED;
+                case FAILED -> ApiError.FAILED_ACCREDITATION_IS_FINAL;
+                case EXPIRED -> ApiError.EXPIRED_ACCREDITATION_IS_FINAL;
+            };
         };
         return clientError(request, error, null, exception.getMessage());
     }

@@ -1,7 +1,7 @@
 package com.willowwealth.accreditation.application.port.out;
 
 import com.willowwealth.accreditation.application.exception.EventPublicationException;
-import com.willowwealth.accreditation.domain.event.AccreditationSubmitted;
+import com.willowwealth.accreditation.domain.event.AccreditationEvent;
 
 public interface AccreditationEventPublisher {
 
@@ -10,5 +10,5 @@ public interface AccreditationEventPublisher {
      *
      * @throws EventPublicationException if the event could not be published in time
      */
-    void publish(AccreditationSubmitted event);
+    void publish(AccreditationEvent event);
 }

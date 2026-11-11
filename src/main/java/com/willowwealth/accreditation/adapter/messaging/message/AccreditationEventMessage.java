@@ -1,6 +1,7 @@
 package com.willowwealth.accreditation.adapter.messaging.message;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.willowwealth.accreditation.domain.event.ChangeOrigin;
 import com.willowwealth.accreditation.domain.model.AccreditationStatus;
 import com.willowwealth.accreditation.domain.model.AccreditationType;
 
@@ -16,12 +17,15 @@ public record AccreditationEventMessage(
         UUID accreditationId,
         String userId,
         AccreditationType accreditationType,
+        AccreditationStatus previousStatus,
         AccreditationStatus newStatus,
+        ChangeOrigin origin,
         Instant occurredAt,
         DocumentMessage document) {
 
     public enum EventType {
-        ACCREDITATION_SUBMITTED
+        ACCREDITATION_SUBMITTED,
+        ACCREDITATION_STATUS_CHANGED
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

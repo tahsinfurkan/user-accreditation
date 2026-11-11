@@ -1,8 +1,8 @@
 package com.willowwealth.accreditation.application.port.in.usecase;
 
-import com.willowwealth.accreditation.domain.event.AccreditationSubmitted;
+import com.willowwealth.accreditation.domain.event.AccreditationEvent;
 
 public interface ApplyAccreditationEventUseCase {
 
-    void apply(AccreditationSubmitted event);
+    void apply(AccreditationEvent event);
 }

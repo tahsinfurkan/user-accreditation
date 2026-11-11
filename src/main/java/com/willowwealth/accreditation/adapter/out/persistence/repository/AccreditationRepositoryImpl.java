@@ -22,6 +22,7 @@ import jakarta.transaction.TransactionSynchronizationRegistry;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Slf4j
@@ -49,8 +50,20 @@ public class AccreditationRepositoryImpl
     }
 
     @Override
+    public Optional<Accreditation> findById(AccreditationId id) {
+        return findByIdOptional(id.value()).map(mapper::toDomain);
+    }
+
+    @Override
     public void insert(Accreditation accreditation) {
         persist(mapper.toEntity(accreditation));
+        evictAfterCommit(accreditation.userId());
+    }
+
+    @Override
+    public void update(Accreditation accreditation) {
+        var entity = findByIdOptional(accreditation.id().value()).orElseThrow();
+        mapper.updateEntity(accreditation, entity);
         evictAfterCommit(accreditation.userId());
     }
 
