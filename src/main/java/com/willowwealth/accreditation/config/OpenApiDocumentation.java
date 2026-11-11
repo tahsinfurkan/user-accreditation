@@ -26,7 +26,10 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
                         Submitting and finalizing answer 202: the change is published to Kafka first and shows up \
                         once the consumer has written it to the database. Every response carries an `X-Request-Id` \
-                        header, which error bodies repeat as `trace_id`."""),
+                        header, which error bodies repeat as `trace_id`.
+
+                        Times are given in the service's time zone, Europe/Malta, with the UTC offset of that day: \
+                        +01:00 in winter and +02:00 in summer."""),
         components = @Components(
                 headers = {
                         @Header(name = OpenApiDocumentation.REQUEST_ID,

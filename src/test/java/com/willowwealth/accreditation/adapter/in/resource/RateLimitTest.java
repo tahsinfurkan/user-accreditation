@@ -37,7 +37,10 @@ class RateLimitTest {
         // Every endpoint has a limit of its own.
         given().when().get(USER_ACCREDITATIONS, newUserId()).then().statusCode(404);
 
-        await().atMost(Duration.ofSeconds(3)).untilAsserted(() -> history().statusCode(404));
+        // Rejected calls count towards the rolling window as well, so the endpoint opens again only for a client that
+        // keeps quiet for Retry-After. Polling every 100 ms, as Awaitility does by default, would keep it closed.
+        await().pollDelay(Duration.ofSeconds(1)).pollInterval(Duration.ofMillis(500)).atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> history().statusCode(404));
     }
 
     private static ValidatableResponse history() {

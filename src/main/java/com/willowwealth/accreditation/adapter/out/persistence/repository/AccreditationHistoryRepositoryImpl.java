@@ -12,6 +12,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import lombok.RequiredArgsConstructor;
 
 import java.time.Clock;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,7 +35,7 @@ public class AccreditationHistoryRepositoryImpl
     @Override
     @ApplyGuard(DATABASE)
     public void append(StatusChange change) {
-        persist(mapper.toEntity(change, clock.instant()));
+        persist(mapper.toEntity(change, ZonedDateTime.now(clock)));
     }
 
     @Override

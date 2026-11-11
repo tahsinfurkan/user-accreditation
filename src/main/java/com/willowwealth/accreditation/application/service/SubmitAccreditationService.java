@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Clock;
+import java.time.ZonedDateTime;
 
 @Slf4j
 @ApplicationScoped
@@ -37,7 +38,7 @@ public class SubmitAccreditationService implements SubmitAccreditationUseCase {
         var document = documentRepository.save(command.document());
 
         eventPublisher.publish(Accreditation.submit(id, command.userId(), command.type(), document, ChangeOrigin.ADMIN,
-                clock.instant()));
+                ZonedDateTime.now(clock)));
         log.info("Accreditation {} submitted for user {} ({})", id, command.userId(), command.type());
         return id;
     }

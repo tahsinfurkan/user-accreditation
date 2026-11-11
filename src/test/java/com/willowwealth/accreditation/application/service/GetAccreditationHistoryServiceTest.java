@@ -9,7 +9,7 @@ import com.willowwealth.accreditation.domain.model.StatusChange;
 import com.willowwealth.accreditation.domain.model.UserId;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 import static com.willowwealth.accreditation.domain.event.ChangeOrigin.ADMIN;
@@ -29,7 +29,7 @@ class GetAccreditationHistoryServiceTest {
     void returnsTheChangesTogetherWithTheUser() {
         var document = new DocumentReference(UUID.randomUUID(), "2018.pdf", "application/pdf", 42, "c0ffee");
         var submission = Accreditation.submit(AccreditationId.newId(), USER, BY_INCOME, document, ADMIN,
-                Instant.parse("2026-11-01T10:00:00Z"));
+                ZonedDateTime.parse("2026-11-01T10:00:00Z"));
         accreditations.insert(Accreditation.from(submission));
         history.append(StatusChange.from(submission));
 

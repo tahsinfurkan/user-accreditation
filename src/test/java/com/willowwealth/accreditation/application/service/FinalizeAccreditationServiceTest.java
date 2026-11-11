@@ -11,8 +11,7 @@ import com.willowwealth.accreditation.domain.model.UserId;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -27,12 +26,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FinalizeAccreditationServiceTest {
 
-    private static final Instant NOW = Instant.parse("2026-11-05T09:00:00Z");
+    private static final ZonedDateTime NOW = ZonedDateTime.parse("2026-11-05T09:00:00Z");
 
     private final InMemoryAccreditationRepository accreditations = new InMemoryAccreditationRepository();
     private final List<AccreditationEvent> published = new ArrayList<>();
-    private final FinalizeAccreditationService service =
-            new FinalizeAccreditationService(accreditations, published::add, Clock.fixed(NOW, ZoneOffset.UTC));
+    private final FinalizeAccreditationService service = new FinalizeAccreditationService(
+            accreditations, published::add, Clock.fixed(NOW.toInstant(), NOW.getZone()));
 
     @Test
     void publishesTheStatusChange() {

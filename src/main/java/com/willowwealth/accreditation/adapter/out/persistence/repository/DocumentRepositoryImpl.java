@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Clock;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 import static com.willowwealth.accreditation.config.CircuitBreakerProducer.DATABASE;
@@ -30,7 +31,7 @@ public class DocumentRepositoryImpl implements DocumentRepository, PanacheReposi
     @ApplyGuard(DATABASE)
     public DocumentReference save(Document document) {
         var reference = DocumentReference.of(UUID.randomUUID(), document);
-        persist(mapper.toEntity(reference, document.content(), clock.instant()));
+        persist(mapper.toEntity(reference, document.content(), ZonedDateTime.now(clock)));
         log.debug("Stored document {} ({} bytes, sha256 {})", reference.id(), reference.sizeBytes(), reference.sha256());
         return reference;
     }

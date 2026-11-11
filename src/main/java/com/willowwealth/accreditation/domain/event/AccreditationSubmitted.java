@@ -5,7 +5,7 @@ import com.willowwealth.accreditation.domain.model.AccreditationType;
 import com.willowwealth.accreditation.domain.model.DocumentReference;
 import com.willowwealth.accreditation.domain.model.UserId;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 public record AccreditationSubmitted(
@@ -15,5 +15,5 @@ public record AccreditationSubmitted(
         AccreditationType type,
         DocumentReference document,
         ChangeOrigin origin,
-        Instant occurredAt) implements AccreditationEvent {
+        ZonedDateTime occurredAt) implements AccreditationEvent {
 }

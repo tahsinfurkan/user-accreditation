@@ -5,7 +5,7 @@ import com.willowwealth.accreditation.domain.model.AccreditationId;
 import com.willowwealth.accreditation.domain.model.AccreditationSummary;
 import com.willowwealth.accreditation.domain.model.UserId;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,7 +24,7 @@ public interface AccreditationRepository {
      * and then id. For the next page pass the last accreditation of the previous one as {@code after}; for the first
      * page pass {@code null}.
      */
-    List<Accreditation> findConfirmedUpdatedBefore(Instant cutoff, Accreditation after, int limit);
+    List<Accreditation> findConfirmedUpdatedBefore(ZonedDateTime cutoff, Accreditation after, int limit);
 
     /**
      * Returns the user's accreditations, oldest first.

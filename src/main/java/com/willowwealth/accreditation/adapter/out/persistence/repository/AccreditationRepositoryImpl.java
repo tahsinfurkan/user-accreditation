@@ -22,7 +22,7 @@ import jakarta.transaction.Synchronization;
 import jakarta.transaction.TransactionSynchronizationRegistry;
 import lombok.extern.slf4j.Slf4j;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -80,7 +80,7 @@ public class AccreditationRepositoryImpl
     // which would shift an offset and make it skip rows.
     @Override
     @ApplyGuard(DATABASE)
-    public List<Accreditation> findConfirmedUpdatedBefore(Instant cutoff, Accreditation after, int limit) {
+    public List<Accreditation> findConfirmedUpdatedBefore(ZonedDateTime cutoff, Accreditation after, int limit) {
         var order = Sort.by("updatedAt").and("id");
         var query = after == null
                 ? find("status = ?1 and updatedAt < ?2", order, AccreditationStatus.CONFIRMED, cutoff)

@@ -7,7 +7,7 @@ import com.willowwealth.accreditation.domain.model.AccreditationStatus;
 import com.willowwealth.accreditation.domain.model.AccreditationSummary;
 import com.willowwealth.accreditation.domain.model.UserId;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -43,7 +43,7 @@ class InMemoryAccreditationRepository implements AccreditationRepository {
     }
 
     @Override
-    public List<Accreditation> findConfirmedUpdatedBefore(Instant cutoff, Accreditation after, int limit) {
+    public List<Accreditation> findConfirmedUpdatedBefore(ZonedDateTime cutoff, Accreditation after, int limit) {
         Comparator<Accreditation> order = Comparator.comparing(Accreditation::updatedAt)
                 .thenComparing(accreditation -> accreditation.id().value());
         return byId.values().stream()

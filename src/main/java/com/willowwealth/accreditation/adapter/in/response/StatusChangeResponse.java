@@ -4,7 +4,7 @@ import com.willowwealth.accreditation.domain.event.ChangeOrigin;
 import com.willowwealth.accreditation.domain.model.AccreditationStatus;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 public record StatusChangeResponse(
@@ -22,6 +22,7 @@ public record StatusChangeResponse(
                 examples = {"ADMIN", "SYSTEM_EXPIRY"})
         ChangeOrigin origin,
 
-        @Schema(examples = {"2026-10-01T09:30:00Z", "2026-11-01T15:00:00Z"})
-        Instant occurredAt) {
+        @Schema(description = "In the service's time zone, with the UTC offset of that day",
+                examples = {"2026-10-01T11:30:00+02:00", "2026-11-01T16:00:00+01:00"})
+        ZonedDateTime occurredAt) {
 }

@@ -14,7 +14,7 @@ import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -79,7 +79,7 @@ class AccreditationRepositoryImplTest {
         QuarkusTransaction.requiringNew().run(() -> repository.insert(accreditation));
         summariesOf(userId);
 
-        var confirmed = accreditation.apply(accreditation.changeStatus(CONFIRMED, ADMIN, Instant.now()));
+        var confirmed = accreditation.apply(accreditation.changeStatus(CONFIRMED, ADMIN, ZonedDateTime.now()));
         QuarkusTransaction.requiringNew().run(() -> repository.update(confirmed));
 
         assertThat(summariesOf(userId)).extracting(AccreditationSummary::status).containsExactly(CONFIRMED);
@@ -109,7 +109,7 @@ class AccreditationRepositoryImplTest {
     @Test
     void pagesThroughConfirmedAccreditationsUpdatedBeforeTheCutoff() {
         // Far in the past, so rows written by other tests stay out of the result.
-        var start = Instant.parse("2001-01-01T00:00:00Z");
+        var start = ZonedDateTime.parse("2001-01-01T00:00:00Z");
         var oldest = insert(CONFIRMED, start);
         // PostgreSQL orders uuids by their bytes, which is also the order of their text form.
         var sameTime = Stream.of(insert(CONFIRMED, start.plusSeconds(60)), insert(CONFIRMED, start.plusSeconds(60)))
@@ -126,7 +126,7 @@ class AccreditationRepositoryImplTest {
         assertThat(secondPage).extracting(Accreditation::id).containsExactly(sameTime.getLast().id());
     }
 
-    private Accreditation insert(AccreditationStatus status, Instant updatedAt) {
+    private Accreditation insert(AccreditationStatus status, ZonedDateTime updatedAt) {
         var accreditation = Accreditation.builder()
                 .id(AccreditationId.newId())
                 .userId(new UserId(UUID.randomUUID().toString().replace("-", "")))
@@ -140,7 +140,7 @@ class AccreditationRepositoryImplTest {
         return accreditation;
     }
 
-    private List<Accreditation> confirmedPage(Instant cutoff, Accreditation after, int limit) {
+    private List<Accreditation> confirmedPage(ZonedDateTime cutoff, Accreditation after, int limit) {
         return QuarkusTransaction.requiringNew().call(() -> repository.findConfirmedUpdatedBefore(cutoff, after, limit));
     }
 
@@ -157,7 +157,7 @@ class AccreditationRepositoryImplTest {
     }
 
     private static Accreditation pendingAccreditation(UserId userId) {
-        var now = Instant.now();
+        var now = ZonedDateTime.now();
         return Accreditation.builder()
                 .id(AccreditationId.newId())
                 .userId(userId)

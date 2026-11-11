@@ -8,7 +8,7 @@ import com.willowwealth.accreditation.domain.model.AccreditationSummary;
 import com.willowwealth.accreditation.domain.model.UserId;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 import static com.willowwealth.accreditation.domain.model.AccreditationStatus.PENDING;
@@ -40,7 +40,7 @@ class GetUserAccreditationsServiceTest {
     }
 
     private static Accreditation pendingAccreditation() {
-        var now = Instant.parse("2026-11-01T10:00:00Z");
+        var now = ZonedDateTime.parse("2026-11-01T10:00:00Z");
         return Accreditation.builder()
                 .id(AccreditationId.newId())
                 .userId(USER)

@@ -6,7 +6,7 @@ import com.willowwealth.accreditation.domain.exception.InvalidStatusTransitionEx
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 import static com.willowwealth.accreditation.domain.event.ChangeOrigin.ADMIN;
@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class AccreditationTest {
 
     private static final UserId USER = new UserId("g8NlYJnk7zK9BlB1J2Ebjs0AkhCTpE1V");
-    private static final Instant SUBMITTED_AT = Instant.parse("2026-11-01T10:00:00Z");
+    private static final ZonedDateTime SUBMITTED_AT = ZonedDateTime.parse("2026-11-01T10:00:00Z");
     private static final DocumentReference DOCUMENT =
             new DocumentReference(UUID.randomUUID(), "2018.pdf", "application/pdf", 42, "c0ffee");
 

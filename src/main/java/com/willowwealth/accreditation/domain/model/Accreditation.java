@@ -7,7 +7,7 @@ import com.willowwealth.accreditation.domain.exception.InvalidStatusTransitionEx
 import lombok.Builder;
 import lombok.With;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -19,8 +19,8 @@ public record Accreditation(
         AccreditationType type,
         AccreditationStatus status,
         UUID documentId,
-        Instant createdAt,
-        Instant updatedAt) {
+        ZonedDateTime createdAt,
+        ZonedDateTime updatedAt) {
 
     public Accreditation {
         Objects.requireNonNull(id, "id is required");
@@ -30,7 +30,7 @@ public record Accreditation(
     }
 
     public static AccreditationSubmitted submit(AccreditationId id, UserId userId, AccreditationType type,
-                                                DocumentReference document, ChangeOrigin origin, Instant now) {
+                                                DocumentReference document, ChangeOrigin origin, ZonedDateTime now) {
         return new AccreditationSubmitted(UUID.randomUUID(), id, userId, type, document, origin, now);
     }
 
@@ -46,7 +46,7 @@ public record Accreditation(
                 .build();
     }
 
-    public AccreditationStatusChanged changeStatus(AccreditationStatus target, ChangeOrigin origin, Instant now) {
+    public AccreditationStatusChanged changeStatus(AccreditationStatus target, ChangeOrigin origin, ZonedDateTime now) {
         if (!status.canTransitionTo(target)) {
             throw new InvalidStatusTransitionException(id, status, target);
         }

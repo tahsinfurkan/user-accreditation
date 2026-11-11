@@ -9,7 +9,7 @@ import com.willowwealth.accreditation.domain.model.StatusChange;
 import com.willowwealth.accreditation.domain.model.UserId;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 import static com.willowwealth.accreditation.domain.event.ChangeOrigin.ADMIN;
@@ -22,8 +22,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ApplyAccreditationEventServiceTest {
 
     private static final UserId USER = new UserId("g8NlYJnk7zK9BlB1J2Ebjs0AkhCTpE1V");
-    private static final Instant SUBMITTED_AT = Instant.parse("2026-11-01T10:00:00Z");
-    private static final Instant DECIDED_AT = Instant.parse("2026-11-02T10:00:00Z");
+    private static final ZonedDateTime SUBMITTED_AT = ZonedDateTime.parse("2026-11-01T10:00:00Z");
+    private static final ZonedDateTime DECIDED_AT = ZonedDateTime.parse("2026-11-02T10:00:00Z");
 
     private final InMemoryAccreditationRepository accreditations = new InMemoryAccreditationRepository();
     private final InMemoryAccreditationHistoryRepository history = new InMemoryAccreditationHistoryRepository();

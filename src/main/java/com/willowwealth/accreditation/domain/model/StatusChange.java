@@ -5,7 +5,7 @@ import com.willowwealth.accreditation.domain.event.AccreditationStatusChanged;
 import com.willowwealth.accreditation.domain.event.AccreditationSubmitted;
 import com.willowwealth.accreditation.domain.event.ChangeOrigin;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 // One entry of an accreditation's history. The submission is the first entry and has no previous status.
@@ -15,7 +15,7 @@ public record StatusChange(
         AccreditationStatus previousStatus,
         AccreditationStatus newStatus,
         ChangeOrigin origin,
-        Instant occurredAt) {
+        ZonedDateTime occurredAt) {
 
     public static StatusChange from(AccreditationEvent event) {
         return switch (event) {

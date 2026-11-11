@@ -6,7 +6,7 @@ import com.willowwealth.accreditation.domain.model.StatusChange;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -14,7 +14,7 @@ import java.util.UUID;
 public interface StatusChangeEntityMapper {
 
     @Mapping(target = "recordedAt", source = "recordedAt")
-    StatusChangeEntity toEntity(StatusChange change, Instant recordedAt);
+    StatusChangeEntity toEntity(StatusChange change, ZonedDateTime recordedAt);
 
     List<StatusChange> toDomain(List<StatusChangeEntity> entities);
 

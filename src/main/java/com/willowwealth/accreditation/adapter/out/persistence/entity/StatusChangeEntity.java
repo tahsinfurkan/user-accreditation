@@ -13,7 +13,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 @Entity
@@ -46,8 +46,8 @@ public class StatusChangeEntity {
     private ChangeOrigin origin;
 
     @Column(name = "occurred_at", nullable = false)
-    private Instant occurredAt;
+    private ZonedDateTime occurredAt;
 
     @Column(name = "recorded_at", nullable = false)
-    private Instant recordedAt;
+    private ZonedDateTime recordedAt;
 }

@@ -17,7 +17,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 import java.time.Duration;
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.UUID;
 
@@ -160,7 +160,7 @@ class FinalizeAccreditationTest {
     }
 
     private UUID existingAccreditation(AccreditationStatus status) {
-        var now = Instant.now();
+        var now = ZonedDateTime.now();
         var accreditation = Accreditation.builder()
                 .id(AccreditationId.newId())
                 .userId(new UserId(newUserId()))

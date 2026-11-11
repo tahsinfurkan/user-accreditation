@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 @Entity
@@ -42,5 +42,5 @@ public class DocumentEntity {
     private byte[] content;
 
     @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+    private ZonedDateTime createdAt;
 }

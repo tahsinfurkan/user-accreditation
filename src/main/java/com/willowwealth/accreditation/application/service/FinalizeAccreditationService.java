@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Clock;
+import java.time.ZonedDateTime;
 
 @Slf4j
 @ApplicationScoped
@@ -26,7 +27,7 @@ public class FinalizeAccreditationService implements FinalizeAccreditationUseCas
     public void finalizeAccreditation(FinalizeAccreditationCommand command) {
         var accreditation = repository.findById(command.accreditationId())
                 .orElseThrow(() -> new AccreditationNotFoundException(command.accreditationId()));
-        var change = accreditation.changeStatus(command.outcome(), ChangeOrigin.ADMIN, clock.instant());
+        var change = accreditation.changeStatus(command.outcome(), ChangeOrigin.ADMIN, ZonedDateTime.now(clock));
 
         eventPublisher.publish(change);
         log.info("Accreditation {} of user {} is changing from {} to {}", change.accreditationId(), change.userId(),

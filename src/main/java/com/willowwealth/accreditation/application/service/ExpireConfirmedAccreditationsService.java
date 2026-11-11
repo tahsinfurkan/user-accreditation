@@ -12,7 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Clock;
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.List;
 
 import static com.willowwealth.accreditation.domain.event.ChangeOrigin.SYSTEM_EXPIRY;
@@ -30,7 +30,7 @@ public class ExpireConfirmedAccreditationsService implements ExpireConfirmedAccr
     // Like the API, this only publishes the changes; the consumer checks each one again before writing it.
     @Override
     public int expire(ExpireConfirmedAccreditationsCommand command) {
-        var now = clock.instant();
+        var now = ZonedDateTime.now(clock);
         var cutoff = now.minus(command.confirmedTtl());
         var published = 0;
         var page = confirmedPage(cutoff, null, command.batchSize());
@@ -59,7 +59,7 @@ public class ExpireConfirmedAccreditationsService implements ExpireConfirmedAccr
     // Every page is read in a short transaction of its own, so none stays open while the events are published.
     // Quarkus intercepts calls a bean makes to its own methods, which is why the annotation applies here.
     @Transactional
-    List<Accreditation> confirmedPage(Instant cutoff, Accreditation after, int size) {
+    List<Accreditation> confirmedPage(ZonedDateTime cutoff, Accreditation after, int size) {
         return repository.findConfirmedUpdatedBefore(cutoff, after, size);
     }
 }

@@ -5,7 +5,7 @@ import com.willowwealth.accreditation.domain.event.ChangeOrigin;
 import com.willowwealth.accreditation.domain.model.AccreditationStatus;
 import com.willowwealth.accreditation.domain.model.AccreditationType;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 // Wire format of the accreditation topic. Shared by the publisher and the consumer.
@@ -20,7 +20,7 @@ public record AccreditationEventMessage(
         AccreditationStatus previousStatus,
         AccreditationStatus newStatus,
         ChangeOrigin origin,
-        Instant occurredAt,
+        ZonedDateTime occurredAt,
         DocumentMessage document) {
 
     public enum EventType {

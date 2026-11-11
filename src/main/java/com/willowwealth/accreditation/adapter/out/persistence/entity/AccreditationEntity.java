@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 @Entity
@@ -45,10 +45,10 @@ public class AccreditationEntity {
     private UUID documentId;
 
     @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+    private ZonedDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
+    private ZonedDateTime updatedAt;
 
     @Version
     private long version;

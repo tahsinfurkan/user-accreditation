@@ -12,8 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -30,15 +29,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ExpireConfirmedAccreditationsServiceTest {
 
-    private static final Instant NOW = Instant.parse("2026-11-05T09:00:00Z");
+    private static final ZonedDateTime NOW = ZonedDateTime.parse("2026-11-05T09:00:00Z");
     private static final Duration TTL = Duration.ofDays(30);
 
     private final InMemoryAccreditationRepository accreditations = new InMemoryAccreditationRepository();
     private final List<AccreditationId> attempted = new ArrayList<>();
     private final List<AccreditationEvent> published = new ArrayList<>();
     private final Map<AccreditationId, RuntimeException> failures = new HashMap<>();
-    private final ExpireConfirmedAccreditationsService service =
-            new ExpireConfirmedAccreditationsService(accreditations, this::publish, Clock.fixed(NOW, ZoneOffset.UTC));
+    private final ExpireConfirmedAccreditationsService service = new ExpireConfirmedAccreditationsService(
+            accreditations, this::publish, Clock.fixed(NOW.toInstant(), NOW.getZone()));
 
     @Test
     void expiresWhatWasConfirmedLongerAgoThanTheTtl() {
@@ -108,7 +107,7 @@ class ExpireConfirmedAccreditationsServiceTest {
         published.add(event);
     }
 
-    private Accreditation add(AccreditationStatus status, Instant updatedAt) {
+    private Accreditation add(AccreditationStatus status, ZonedDateTime updatedAt) {
         var accreditation = Accreditation.builder()
                 .id(AccreditationId.newId())
                 .userId(new UserId(UUID.randomUUID().toString().replace("-", "")))
