@@ -5,6 +5,7 @@ import com.willowwealth.accreditation.application.port.in.usecase.SubmitAccredit
 import com.willowwealth.accreditation.application.port.out.AccreditationEventPublisher;
 import com.willowwealth.accreditation.application.port.out.AccreditationRepository;
 import com.willowwealth.accreditation.application.port.out.DocumentRepository;
+import com.willowwealth.accreditation.domain.event.ChangeOrigin;
 import com.willowwealth.accreditation.domain.exception.PendingAccreditationExistsException;
 import com.willowwealth.accreditation.domain.model.Accreditation;
 import com.willowwealth.accreditation.domain.model.AccreditationId;
@@ -35,7 +36,8 @@ public class SubmitAccreditationService implements SubmitAccreditationUseCase {
         var id = AccreditationId.newId();
         var document = documentRepository.save(command.document());
 
-        eventPublisher.publish(Accreditation.submit(id, command.userId(), command.type(), document, clock.instant()));
+        eventPublisher.publish(Accreditation.submit(id, command.userId(), command.type(), document, ChangeOrigin.ADMIN,
+                clock.instant()));
         log.info("Accreditation {} submitted for user {} ({})", id, command.userId(), command.type());
         return id;
     }

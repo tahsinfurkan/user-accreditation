@@ -5,6 +5,7 @@ import com.willowwealth.accreditation.domain.event.AccreditationSubmitted;
 import com.willowwealth.accreditation.domain.model.Accreditation;
 import com.willowwealth.accreditation.domain.model.AccreditationId;
 import com.willowwealth.accreditation.domain.model.DocumentReference;
+import com.willowwealth.accreditation.domain.model.StatusChange;
 import com.willowwealth.accreditation.domain.model.UserId;
 import org.junit.jupiter.api.Test;
 
@@ -25,7 +26,8 @@ class ApplyAccreditationEventServiceTest {
     private static final Instant DECIDED_AT = Instant.parse("2026-11-02T10:00:00Z");
 
     private final InMemoryAccreditationRepository accreditations = new InMemoryAccreditationRepository();
-    private final ApplyAccreditationEventService service = new ApplyAccreditationEventService(accreditations);
+    private final InMemoryAccreditationHistoryRepository history = new InMemoryAccreditationHistoryRepository();
+    private final ApplyAccreditationEventService service = new ApplyAccreditationEventService(accreditations, history);
 
     @Test
     void recordsSubmissionAsPending() {
@@ -41,6 +43,16 @@ class ApplyAccreditationEventServiceTest {
     }
 
     @Test
+    void startsTheHistoryWithTheSubmission() {
+        var event = submitted();
+
+        service.apply(event);
+
+        assertThat(history.changes).containsExactly(
+                new StatusChange(event.eventId(), event.accreditationId(), null, PENDING, ADMIN, SUBMITTED_AT));
+    }
+
+    @Test
     void ignoresTheSameSubmissionDeliveredTwice() {
         var event = submitted();
 
@@ -48,6 +60,7 @@ class ApplyAccreditationEventServiceTest {
         service.apply(event);
 
         assertThat(accreditations.inserts).isEqualTo(1);
+        assertThat(history.changes).hasSize(1);
     }
 
     @Test
@@ -59,19 +72,35 @@ class ApplyAccreditationEventServiceTest {
         service.apply(second);
 
         assertThat(accreditations.byId).containsOnlyKeys(first.accreditationId());
+        assertThat(history.changes).extracting(StatusChange::eventId).containsExactly(first.eventId());
     }
 
     @Test
     void appliesAStatusChange() {
         var submission = submitted();
         service.apply(submission);
+        var change = recorded(submission).changeStatus(CONFIRMED, ADMIN, DECIDED_AT);
 
-        service.apply(recorded(submission).changeStatus(CONFIRMED, ADMIN, DECIDED_AT));
+        service.apply(change);
 
         var accreditation = recorded(submission);
         assertThat(accreditation.status()).isEqualTo(CONFIRMED);
         assertThat(accreditation.updatedAt()).isEqualTo(DECIDED_AT);
         assertThat(accreditation.createdAt()).isEqualTo(SUBMITTED_AT);
+        assertThat(history.changes).extracting(StatusChange::eventId).containsExactly(submission.eventId(), change.eventId());
+    }
+
+    @Test
+    void ignoresTheSameStatusChangeDeliveredTwice() {
+        var submission = submitted();
+        service.apply(submission);
+        var change = recorded(submission).changeStatus(CONFIRMED, ADMIN, DECIDED_AT);
+
+        service.apply(change);
+        service.apply(change);
+
+        assertThat(recorded(submission).status()).isEqualTo(CONFIRMED);
+        assertThat(history.changes).extracting(StatusChange::eventId).containsExactly(submission.eventId(), change.eventId());
     }
 
     @Test
@@ -86,6 +115,7 @@ class ApplyAccreditationEventServiceTest {
         service.apply(fail);
 
         assertThat(recorded(submission).status()).isEqualTo(CONFIRMED);
+        assertThat(history.changes).extracting(StatusChange::eventId).containsExactly(submission.eventId(), confirm.eventId());
     }
 
     @Test
@@ -96,6 +126,7 @@ class ApplyAccreditationEventServiceTest {
         service.apply(change);
 
         assertThat(accreditations.byId).isEmpty();
+        assertThat(history.changes).isEmpty();
     }
 
     private Accreditation recorded(AccreditationSubmitted submission) {
@@ -104,6 +135,6 @@ class ApplyAccreditationEventServiceTest {
 
     private static AccreditationSubmitted submitted() {
         var document = new DocumentReference(UUID.randomUUID(), "2018.pdf", "application/pdf", 42, "c0ffee");
-        return Accreditation.submit(AccreditationId.newId(), USER, BY_NET_WORTH, document, SUBMITTED_AT);
+        return Accreditation.submit(AccreditationId.newId(), USER, BY_NET_WORTH, document, ADMIN, SUBMITTED_AT);
     }
 }

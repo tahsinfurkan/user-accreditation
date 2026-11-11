@@ -45,11 +45,6 @@ public class AccreditationRepositoryImpl
     }
 
     @Override
-    public boolean exists(AccreditationId id) {
-        return count("id", id.value()) > 0;
-    }
-
-    @Override
     public Optional<Accreditation> findById(AccreditationId id) {
         return findByIdOptional(id.value()).map(mapper::toDomain);
     }

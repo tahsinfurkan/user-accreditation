@@ -1,6 +1,5 @@
 package com.willowwealth.accreditation.adapter.in.resource;
 
-import com.willowwealth.accreditation.adapter.out.persistence.entity.AccreditationEntity;
 import com.willowwealth.accreditation.adapter.out.persistence.repository.AccreditationRepositoryImpl;
 import com.willowwealth.accreditation.domain.model.Accreditation;
 import com.willowwealth.accreditation.domain.model.AccreditationId;
@@ -11,7 +10,6 @@ import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.kafka.InjectKafkaCompanion;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
-import io.restassured.response.ValidatableResponse;
 import io.smallrye.reactive.messaging.kafka.companion.KafkaCompanion;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
@@ -24,6 +22,10 @@ import java.util.Map;
 import java.util.UUID;
 
 import static com.willowwealth.accreditation.adapter.in.handler.ErrorBodyAssertions.assertErrorBody;
+import static com.willowwealth.accreditation.adapter.in.resource.AccreditationRequests.newUserId;
+import static com.willowwealth.accreditation.adapter.in.resource.AccreditationRequests.putOutcome;
+import static com.willowwealth.accreditation.adapter.in.resource.AccreditationRequests.submit;
+import static com.willowwealth.accreditation.adapter.in.resource.AccreditationRequests.waitForStatus;
 import static com.willowwealth.accreditation.domain.model.AccreditationStatus.CONFIRMED;
 import static com.willowwealth.accreditation.domain.model.AccreditationStatus.EXPIRED;
 import static com.willowwealth.accreditation.domain.model.AccreditationStatus.FAILED;
@@ -32,13 +34,11 @@ import static com.willowwealth.accreditation.domain.model.AccreditationType.BY_I
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.entry;
-import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.equalTo;
 
 @QuarkusTest
 class FinalizeAccreditationTest {
 
-    private static final String SUBMIT = "/api/v1/user/accreditation";
     private static final String ACCREDITATION = "/api/v1/user/accreditation/{accreditationId}";
     private static final String STATUSES = "/api/v1/user/{userId}/accreditation";
     private static final String TOPIC = "accreditation-status-events";
@@ -54,10 +54,10 @@ class FinalizeAccreditationTest {
         var id = submitAndWait(newUserId(), "BY_INCOME");
 
         putOutcome(id, "CONFIRMED").statusCode(202).body("accreditation_id", equalTo(id.toString()));
-        waitForStatus(id, CONFIRMED);
+        waitForStatus(accreditations, id, CONFIRMED);
 
         putOutcome(id, "EXPIRED").statusCode(202);
-        waitForStatus(id, EXPIRED);
+        waitForStatus(accreditations, id, EXPIRED);
     }
 
     @Test
@@ -66,7 +66,7 @@ class FinalizeAccreditationTest {
 
         putOutcome(id, "FAILED").statusCode(202);
 
-        waitForStatus(id, FAILED);
+        waitForStatus(accreditations, id, FAILED);
     }
 
     @Test
@@ -74,10 +74,10 @@ class FinalizeAccreditationTest {
         var userId = newUserId();
         var failed = submitAndWait(userId, "BY_INCOME");
         putOutcome(failed, "FAILED").statusCode(202);
-        waitForStatus(failed, FAILED);
+        waitForStatus(accreditations, failed, FAILED);
         var confirmed = submitAndWait(userId, "BY_NET_WORTH");
         putOutcome(confirmed, "CONFIRMED").statusCode(202);
-        waitForStatus(confirmed, CONFIRMED);
+        waitForStatus(accreditations, confirmed, CONFIRMED);
 
         Map<String, Map<String, String>> statuses = given().when().get(STATUSES, userId)
                 .then().statusCode(200)
@@ -153,32 +153,10 @@ class FinalizeAccreditationTest {
         assertThat(error.getList("errors.field", String.class)).containsExactly("outcome");
     }
 
-    private ValidatableResponse putOutcome(UUID accreditationId, String outcome) {
-        return given().contentType(ContentType.JSON).body("""
-                        {"outcome": "%s"}""".formatted(outcome))
-                .when().put(ACCREDITATION, accreditationId)
-                .then();
-    }
-
     private UUID submitAndWait(String userId, String type) {
-        var id = given().contentType(ContentType.JSON).body("""
-                        {"user_id": "%s", "accreditation_type": "%s",
-                         "document": {"name": "2021.pdf", "mime_type": "application/pdf", "content": "JVBERi0xLjcK"}}"""
-                        .formatted(userId, type))
-                .when().post(SUBMIT)
-                .then().statusCode(202)
-                .extract().jsonPath().getString("accreditation_id");
-        var accreditationId = UUID.fromString(id);
-        waitForStatus(accreditationId, PENDING);
-        return accreditationId;
-    }
-
-    // Changes are applied by the consumer, so tests wait until the database shows them.
-    private void waitForStatus(UUID accreditationId, AccreditationStatus status) {
-        await().atMost(Duration.ofSeconds(10)).until(() -> QuarkusTransaction.requiringNew()
-                .call(() -> accreditations.findByIdOptional(accreditationId).map(AccreditationEntity::getStatus))
-                .filter(status::equals)
-                .isPresent());
+        var id = submit(userId, type);
+        waitForStatus(accreditations, id, PENDING);
+        return id;
     }
 
     private UUID existingAccreditation(AccreditationStatus status) {
@@ -194,9 +172,5 @@ class FinalizeAccreditationTest {
                 .build();
         QuarkusTransaction.requiringNew().run(() -> accreditations.insert(accreditation));
         return accreditation.id().value();
-    }
-
-    private static String newUserId() {
-        return UUID.randomUUID().toString().replace("-", "");
     }
 }

@@ -97,6 +97,7 @@ class AdminAccreditationResourceTest {
         assertThat(event.getString("event_type")).isEqualTo("ACCREDITATION_SUBMITTED");
         assertThat(event.getString("accreditation_id")).isEqualTo(accreditationId.toString());
         assertThat(event.getString("new_status")).isEqualTo("PENDING");
+        assertThat(event.getString("origin")).isEqualTo("ADMIN");
         assertThat(event.getString("document.sha256")).hasSize(64);
         // Only a reference to the document travels through Kafka, never the file itself.
         assertThat(record.value()).doesNotContain(SPEC_CONTENT);

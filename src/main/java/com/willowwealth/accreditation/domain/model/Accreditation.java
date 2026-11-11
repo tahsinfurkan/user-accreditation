@@ -30,8 +30,8 @@ public record Accreditation(
     }
 
     public static AccreditationSubmitted submit(AccreditationId id, UserId userId, AccreditationType type,
-                                                DocumentReference document, Instant now) {
-        return new AccreditationSubmitted(UUID.randomUUID(), id, userId, type, document, now);
+                                                DocumentReference document, ChangeOrigin origin, Instant now) {
+        return new AccreditationSubmitted(UUID.randomUUID(), id, userId, type, document, origin, now);
     }
 
     public static Accreditation from(AccreditationSubmitted event) {

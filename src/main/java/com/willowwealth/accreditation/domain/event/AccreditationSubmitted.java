@@ -14,5 +14,6 @@ public record AccreditationSubmitted(
         UserId userId,
         AccreditationType type,
         DocumentReference document,
+        ChangeOrigin origin,
         Instant occurredAt) implements AccreditationEvent {
 }

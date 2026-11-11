@@ -10,8 +10,6 @@ import java.util.Optional;
 
 public interface AccreditationRepository {
 
-    boolean exists(AccreditationId id);
-
     Optional<Accreditation> findById(AccreditationId id);
 
     void insert(Accreditation accreditation);

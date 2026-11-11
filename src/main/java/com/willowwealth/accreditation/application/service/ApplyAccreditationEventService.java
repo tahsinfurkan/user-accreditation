@@ -1,12 +1,14 @@
 package com.willowwealth.accreditation.application.service;
 
 import com.willowwealth.accreditation.application.port.in.usecase.ApplyAccreditationEventUseCase;
+import com.willowwealth.accreditation.application.port.out.AccreditationHistoryRepository;
 import com.willowwealth.accreditation.application.port.out.AccreditationRepository;
 import com.willowwealth.accreditation.domain.event.AccreditationEvent;
 import com.willowwealth.accreditation.domain.event.AccreditationStatusChanged;
 import com.willowwealth.accreditation.domain.event.AccreditationSubmitted;
 import com.willowwealth.accreditation.domain.exception.InvalidStatusTransitionException;
 import com.willowwealth.accreditation.domain.model.Accreditation;
+import com.willowwealth.accreditation.domain.model.StatusChange;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -19,10 +21,17 @@ import lombok.extern.slf4j.Slf4j;
 public class ApplyAccreditationEventService implements ApplyAccreditationEventUseCase {
 
     private final AccreditationRepository repository;
+    private final AccreditationHistoryRepository history;
 
     @Override
     @Transactional
     public void apply(AccreditationEvent event) {
+        // Kafka delivers at least once, so the same event can arrive twice. Every applied event is in the history.
+        if (history.contains(event.eventId())) {
+            log.debug("Event {} of accreditation {} was already applied, skipping it", event.eventId(),
+                    event.accreditationId());
+            return;
+        }
         switch (event) {
             case AccreditationSubmitted submitted -> record(submitted);
             case AccreditationStatusChanged change -> changeStatus(change);
@@ -30,11 +39,6 @@ public class ApplyAccreditationEventService implements ApplyAccreditationEventUs
     }
 
     private void record(AccreditationSubmitted event) {
-        // Kafka delivers at least once, so the same submission can arrive twice.
-        if (repository.exists(event.accreditationId())) {
-            log.debug("Accreditation {} is already recorded, skipping event {}", event.accreditationId(), event.eventId());
-            return;
-        }
         // The API checks this as well, but two submissions of the same user can pass that check at the same time.
         if (repository.existsPendingFor(event.userId())) {
             log.warn("Rejected accreditation {} of user {}: the user already has a pending accreditation",
@@ -42,6 +46,7 @@ public class ApplyAccreditationEventService implements ApplyAccreditationEventUs
             return;
         }
         repository.insert(Accreditation.from(event));
+        history.append(StatusChange.from(event));
         log.info("Accreditation {} recorded as PENDING for user {}", event.accreditationId(), event.userId());
     }
 
@@ -60,6 +65,7 @@ public class ApplyAccreditationEventService implements ApplyAccreditationEventUs
                     accreditation.get().status());
             return;
         }
+        history.append(StatusChange.from(event));
         log.info("Accreditation {} of user {} changed from {} to {}", event.accreditationId(), event.userId(),
                 event.previousStatus(), event.newStatus());
     }

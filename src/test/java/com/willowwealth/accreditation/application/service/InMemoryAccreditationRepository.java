@@ -19,11 +19,6 @@ class InMemoryAccreditationRepository implements AccreditationRepository {
     int inserts;
 
     @Override
-    public boolean exists(AccreditationId id) {
-        return byId.containsKey(id);
-    }
-
-    @Override
     public Optional<Accreditation> findById(AccreditationId id) {
         return Optional.ofNullable(byId.get(id));
     }

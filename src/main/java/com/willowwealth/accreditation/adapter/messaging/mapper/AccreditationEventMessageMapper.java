@@ -34,7 +34,6 @@ public interface AccreditationEventMessageMapper {
     @Mapping(target = "accreditationType", source = "type")
     @Mapping(target = "previousStatus", ignore = true)
     @Mapping(target = "newStatus", constant = "PENDING")
-    @Mapping(target = "origin", ignore = true)
     AccreditationEventMessage fromSubmitted(AccreditationSubmitted event);
 
     @Mapping(target = "eventType", constant = "ACCREDITATION_STATUS_CHANGED")

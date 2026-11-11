@@ -29,10 +29,11 @@ class AccreditationTest {
     void newSubmissionStartsAsPending() {
         var id = AccreditationId.newId();
 
-        AccreditationSubmitted event = Accreditation.submit(id, USER, BY_INCOME, DOCUMENT, SUBMITTED_AT);
+        AccreditationSubmitted event = Accreditation.submit(id, USER, BY_INCOME, DOCUMENT, ADMIN, SUBMITTED_AT);
         Accreditation accreditation = Accreditation.from(event);
 
         assertThat(event.eventId()).isNotNull();
+        assertThat(event.origin()).isEqualTo(ADMIN);
         assertThat(accreditation.id()).isEqualTo(id);
         assertThat(accreditation.status()).isEqualTo(PENDING);
         assertThat(accreditation.documentId()).isEqualTo(DOCUMENT.id());
@@ -87,6 +88,6 @@ class AccreditationTest {
     }
 
     private static Accreditation pending() {
-        return Accreditation.from(Accreditation.submit(AccreditationId.newId(), USER, BY_INCOME, DOCUMENT, SUBMITTED_AT));
+        return Accreditation.from(Accreditation.submit(AccreditationId.newId(), USER, BY_INCOME, DOCUMENT, ADMIN, SUBMITTED_AT));
     }
 }

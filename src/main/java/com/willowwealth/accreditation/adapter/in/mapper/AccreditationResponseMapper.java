@@ -1,8 +1,13 @@
 package com.willowwealth.accreditation.adapter.in.mapper;
 
+import com.willowwealth.accreditation.adapter.in.response.AccreditationHistoryResponse;
 import com.willowwealth.accreditation.adapter.in.response.AccreditationStatusResponse;
+import com.willowwealth.accreditation.adapter.in.response.StatusChangeResponse;
 import com.willowwealth.accreditation.adapter.in.response.UserAccreditationsResponse;
+import com.willowwealth.accreditation.domain.model.AccreditationHistory;
+import com.willowwealth.accreditation.domain.model.AccreditationId;
 import com.willowwealth.accreditation.domain.model.AccreditationSummary;
+import com.willowwealth.accreditation.domain.model.StatusChange;
 import com.willowwealth.accreditation.domain.model.UserId;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -22,5 +27,18 @@ public interface AccreditationResponseMapper {
         var statuses = new LinkedHashMap<UUID, AccreditationStatusResponse>();
         accreditations.forEach(accreditation -> statuses.put(accreditation.id().value(), toStatusResponse(accreditation)));
         return new UserAccreditationsResponse(userId.value(), statuses);
+    }
+
+    @Mapping(target = "history", source = "changes")
+    AccreditationHistoryResponse toHistoryResponse(AccreditationHistory history);
+
+    StatusChangeResponse toStatusChangeResponse(StatusChange change);
+
+    default UUID fromAccreditationId(AccreditationId id) {
+        return id.value();
+    }
+
+    default String fromUserId(UserId userId) {
+        return userId.value();
     }
 }

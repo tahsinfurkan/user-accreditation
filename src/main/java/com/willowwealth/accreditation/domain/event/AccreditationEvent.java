@@ -14,5 +14,7 @@ public sealed interface AccreditationEvent permits AccreditationSubmitted, Accre
 
     UserId userId();
 
+    ChangeOrigin origin();
+
     Instant occurredAt();
 }
