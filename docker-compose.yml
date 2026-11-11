@@ -57,11 +57,16 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-    entrypoint: ["/opt/kafka/bin/kafka-topics.sh"]
-    # The topic is the audit log, so it keeps its events forever.
-    command: ["--bootstrap-server", "kafka:29092", "--create", "--if-not-exists",
-              "--topic", "accreditation-status-events", "--partitions", "3", "--replication-factor", "1",
-              "--config", "retention.ms=-1"]
+    # Both topics keep their records forever: the main one is the audit log,
+    # and a dead-lettered event has to wait until someone looks at it.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        for topic in accreditation-status-events accreditation-status-events-dlq; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists \
+            --topic "$$topic" --partitions 3 --replication-factor 1 --config retention.ms=-1
+        done
 
   kafka-ui:
     image: kafbat/kafka-ui:v1.5.0
@@ -72,6 +77,18 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
     depends_on:
       kafka:
+        condition: service_healthy
+
+  redis-insight:
+    image: redis/redisinsight:3.8.0
+    ports:
+      - "5540:5540"
+    environment:
+      RI_REDIS_HOST: redis
+      RI_REDIS_PORT: 6379
+      RI_REDIS_ALIAS: local
+    depends_on:
+      redis:
         condition: service_healthy
 
   app:
