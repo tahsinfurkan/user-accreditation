@@ -102,6 +102,20 @@ class AdminAccreditationResourceTest {
         assertThat(record.value()).doesNotContain(SPEC_CONTENT);
     }
 
+    @Test
+    void rejectsASecondSubmissionWhileTheFirstIsPending() {
+        var userId = randomUserId();
+        var first = submit(userId);
+        await().atMost(Duration.ofSeconds(10))
+                .until(() -> QuarkusTransaction.requiringNew().call(() -> accreditations.findById(first)) != null);
+
+        var response = given().contentType(ContentType.JSON).body(request(userId))
+                .when().post(ENDPOINT)
+                .then();
+
+        assertErrorBody(response, 409, "Accreditation already pending");
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("requestsWithAnInvalidField")
     void namesTheFieldThatBreaksTheContract(String description, String body, String field) {
