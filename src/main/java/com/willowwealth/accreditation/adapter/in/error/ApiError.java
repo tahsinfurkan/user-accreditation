@@ -26,6 +26,7 @@ public enum ApiError {
             "An EXPIRED accreditation can no longer be updated."),
     REQUEST_TOO_LARGE(413, "Request too large", "The request body is larger than the allowed limit."),
     UNSUPPORTED_MEDIA_TYPE(415, "Unsupported media type", "Please send the request body as application/json."),
+    RATE_LIMITED(429, "Too many requests", "You are sending requests too quickly. Please wait a moment and try again."),
     UNEXPECTED_ERROR(500, "Something went wrong", "An unexpected error occurred. Please try again later."),
     SERVICE_UNAVAILABLE(503, "Service temporarily unavailable",
             "We couldn't process your request right now. Please try again in a moment."),

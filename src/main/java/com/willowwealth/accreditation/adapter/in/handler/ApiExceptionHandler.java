@@ -17,6 +17,7 @@ import com.willowwealth.accreditation.domain.exception.AccreditationNotFoundExce
 import com.willowwealth.accreditation.domain.exception.InvalidStatusTransitionException;
 import com.willowwealth.accreditation.domain.exception.PendingAccreditationExistsException;
 import com.willowwealth.accreditation.domain.exception.UserNotFoundException;
+import io.smallrye.faulttolerance.api.RateLimitException;
 import io.vertx.core.http.HttpServerRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -127,6 +128,18 @@ public class ApiExceptionHandler {
     @ServerExceptionMapper
     public RestResponse<ErrorResponse> circuitOpen(CircuitBreakerOpenException exception, HttpServerRequest request) {
         return turnedAway(request, exception.getMessage());
+    }
+
+    @ServerExceptionMapper
+    public RestResponse<ErrorResponse> rateLimited(RateLimitException exception, HttpServerRequest request) {
+        var error = ApiError.RATE_LIMITED;
+        // Rounded up, so a client that waits this long finds the limit open again.
+        var retryAfterSeconds = Math.max(1, (exception.getRetryAfterMillis() + 999) / 1000);
+        log.warn("{} {} -> {} {}: retry after {} s", request.method(), request.path(), error.getStatus(), error,
+                retryAfterSeconds);
+        return response(error, null)
+                .header(HttpHeaders.RETRY_AFTER, retryAfterSeconds)
+                .build();
     }
 
     @ServerExceptionMapper

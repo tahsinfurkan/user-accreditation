@@ -93,6 +93,8 @@ services:
 
   app:
     build: .
+    # Longer than quarkus.shutdown.timeout, so requests still running can finish before Docker kills the process.
+    stop_grace_period: 35s
     ports:
       - "9999:9999"
     environment:

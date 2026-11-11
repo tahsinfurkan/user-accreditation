@@ -12,6 +12,7 @@ import com.willowwealth.accreditation.application.port.in.usecase.GetAccreditati
 import com.willowwealth.accreditation.application.port.in.usecase.SubmitAccreditationUseCase;
 import com.willowwealth.accreditation.domain.model.AccreditationId;
 import io.smallrye.common.annotation.RunOnVirtualThread;
+import io.smallrye.faulttolerance.api.ApplyGuard;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -28,6 +29,10 @@ import org.jboss.resteasy.reactive.RestResponse;
 
 import java.util.UUID;
 
+import static com.willowwealth.accreditation.config.RateLimitProducer.FINALIZE_RATE_LIMIT;
+import static com.willowwealth.accreditation.config.RateLimitProducer.HISTORY_RATE_LIMIT;
+import static com.willowwealth.accreditation.config.RateLimitProducer.SUBMIT_RATE_LIMIT;
+
 // Both endpoints answer 202 rather than 200 or 201: the change is recorded asynchronously, once its event is consumed.
 @Path("/user/accreditation")
 @Consumes(MediaType.APPLICATION_JSON)
@@ -43,6 +48,7 @@ public class AdminAccreditationResource {
 
     @POST
     @RunOnVirtualThread
+    @ApplyGuard(SUBMIT_RATE_LIMIT)
     public RestResponse<AccreditationIdResponse> submit(
             @Valid @NotNull(message = "must not be empty") SubmitAccreditationRequest body) {
         var id = submitAccreditation.submit(requestMapper.toCommand(body));
@@ -53,6 +59,7 @@ public class AdminAccreditationResource {
     @PUT
     @Path("{accreditationId}")
     @RunOnVirtualThread
+    @ApplyGuard(FINALIZE_RATE_LIMIT)
     public RestResponse<AccreditationIdResponse> finalizeAccreditation(
             @RestPath @Pattern(regexp = AccreditationId.PATTERN, message = "must be a valid UUID") String accreditationId,
             @Valid @NotNull(message = "must not be empty") FinalizeAccreditationRequest body) {
@@ -64,6 +71,7 @@ public class AdminAccreditationResource {
     @GET
     @Path("{accreditationId}/history")
     @RunOnVirtualThread
+    @ApplyGuard(HISTORY_RATE_LIMIT)
     public AccreditationHistoryResponse history(
             @RestPath @Pattern(regexp = AccreditationId.PATTERN, message = "must be a valid UUID") String accreditationId) {
         var query = new GetAccreditationHistoryQuery(new AccreditationId(UUID.fromString(accreditationId)));
