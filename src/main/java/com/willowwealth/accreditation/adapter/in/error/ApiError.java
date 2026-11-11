@@ -1,0 +1,25 @@
+package com.willowwealth.accreditation.adapter.in.error;
+
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+
+// Every error the API returns is built from this list, so no internal text can reach a client.
+@Getter
+@RequiredArgsConstructor
+public enum ApiError {
+
+    VALIDATION_FAILED(400, "Invalid request", "Some fields are missing or invalid. Please check them and try again."),
+    MALFORMED_JSON(400, "Invalid request", "The request body is not valid JSON. Please send a valid JSON object."),
+    RESOURCE_NOT_FOUND(404, "Resource not found", "The requested URL does not exist."),
+    METHOD_NOT_ALLOWED(405, "Method not allowed", "This endpoint does not support the requested HTTP method."),
+    NOT_ACCEPTABLE(406, "Not acceptable", "This endpoint only returns application/json."),
+    REQUEST_TOO_LARGE(413, "Request too large", "The request body is larger than the allowed limit."),
+    UNSUPPORTED_MEDIA_TYPE(415, "Unsupported media type", "Please send the request body as application/json."),
+    UNEXPECTED_ERROR(500, "Something went wrong", "An unexpected error occurred. Please try again later."),
+    SERVICE_UNAVAILABLE(503, "Service temporarily unavailable",
+            "We couldn't process your request right now. Please try again in a moment.");
+
+    private final int status;
+    private final String message;
+    private final String detail;
+}

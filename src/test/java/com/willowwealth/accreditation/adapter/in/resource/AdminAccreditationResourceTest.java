@@ -26,6 +26,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.willowwealth.accreditation.adapter.in.handler.ErrorBodyAssertions.assertErrorBody;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -102,56 +103,86 @@ class AdminAccreditationResourceTest {
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("invalidRequests")
-    void rejectsRequestsThatDoNotMatchTheContract(String description, String body) {
-        given().contentType(ContentType.JSON).body(body)
+    @MethodSource("requestsWithAnInvalidField")
+    void namesTheFieldThatBreaksTheContract(String description, String body, String field) {
+        var response = given().contentType(ContentType.JSON).body(body)
                 .when().post(ENDPOINT)
-                .then().statusCode(400);
+                .then();
+
+        var error = assertErrorBody(response, 400, "Invalid request");
+        assertThat(error.getList("errors.field", String.class)).containsExactly(field);
+        assertThat(error.getList("errors.message", String.class)).allSatisfy(message -> assertThat(message).isNotBlank());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("bodiesThatAreNotValidJson")
+    void rejectsBodiesThatAreNotValidJson(String description, String body) {
+        var response = given().contentType(ContentType.JSON).body(body)
+                .when().post(ENDPOINT)
+                .then();
+
+        var error = assertErrorBody(response, 400, "Invalid request");
+        assertThat(error.getString("detail")).isEqualTo("The request body is not valid JSON. Please send a valid JSON object.");
+        assertThat(error.getList("errors")).isNull();
     }
 
     @Test
     void rejectsBodiesThatAreNotJson() {
-        given().contentType(ContentType.TEXT).body("hello")
+        var response = given().contentType(ContentType.TEXT).body("hello")
                 .when().post(ENDPOINT)
-                .then().statusCode(415);
+                .then();
+
+        assertErrorBody(response, 415, "Unsupported media type");
     }
 
-    static Stream<Arguments> invalidRequests() {
+    static Stream<Arguments> requestsWithAnInvalidField() {
         var userId = randomUserId();
         var tooLarge = Base64.getEncoder().encodeToString(new byte[Document.MAX_SIZE_BYTES + 1]);
         return Stream.of(
                 arguments("missing user_id", """
-                        {"accreditation_type": "BY_INCOME", "document": %s}""".formatted(DOCUMENT)),
+                        {"accreditation_type": "BY_INCOME", "document": %s}""".formatted(DOCUMENT), "user_id"),
                 arguments("null user_id", """
-                        {"user_id": null, "accreditation_type": "BY_INCOME", "document": %s}""".formatted(DOCUMENT)),
+                        {"user_id": null, "accreditation_type": "BY_INCOME", "document": %s}""".formatted(DOCUMENT),
+                        "user_id"),
                 arguments("user_id given as a number", """
-                        {"user_id": 123, "accreditation_type": "BY_INCOME", "document": %s}""".formatted(DOCUMENT)),
+                        {"user_id": 123, "accreditation_type": "BY_INCOME", "document": %s}""".formatted(DOCUMENT),
+                        "user_id"),
                 arguments("user_id one character short", """
                         {"user_id": "%s", "accreditation_type": "BY_INCOME", "document": %s}"""
-                        .formatted(userId.substring(1), DOCUMENT)),
+                        .formatted(userId.substring(1), DOCUMENT), "user_id"),
                 arguments("user_id with a dash", """
                         {"user_id": "%s", "accreditation_type": "BY_INCOME", "document": %s}"""
-                        .formatted("-" + userId.substring(1), DOCUMENT)),
+                        .formatted("-" + userId.substring(1), DOCUMENT), "user_id"),
                 arguments("unknown accreditation_type", """
-                        {"user_id": "%s", "accreditation_type": "BY_SALARY", "document": %s}""".formatted(userId, DOCUMENT)),
+                        {"user_id": "%s", "accreditation_type": "BY_SALARY", "document": %s}""".formatted(userId, DOCUMENT),
+                        "accreditation_type"),
                 arguments("unknown field", """
                         {"user_id": "%s", "accreditation_type": "BY_INCOME", "document": %s, "note": "x"}"""
-                        .formatted(userId, DOCUMENT)),
+                        .formatted(userId, DOCUMENT), "note"),
                 arguments("missing document", """
-                        {"user_id": "%s", "accreditation_type": "BY_INCOME"}""".formatted(userId)),
-                arguments("empty document name", requestWithDocument(userId, "", "application/pdf", SPEC_CONTENT)),
+                        {"user_id": "%s", "accreditation_type": "BY_INCOME"}""".formatted(userId), "document"),
+                arguments("empty document name", requestWithDocument(userId, "", "application/pdf", SPEC_CONTENT),
+                        "document.name"),
                 arguments("document name over 255 characters",
-                        requestWithDocument(userId, "a".repeat(256), "application/pdf", SPEC_CONTENT)),
-                arguments("mime_type other than pdf", requestWithDocument(userId, "2018.png", "image/png", SPEC_CONTENT)),
-                arguments("content that is not Base64", requestWithDocument(userId, "2018.pdf", "application/pdf", "not base64!")),
-                arguments("content over 5 MB", requestWithDocument(userId, "2018.pdf", "application/pdf", tooLarge)),
+                        requestWithDocument(userId, "a".repeat(256), "application/pdf", SPEC_CONTENT), "document.name"),
+                arguments("mime_type other than pdf", requestWithDocument(userId, "2018.png", "image/png", SPEC_CONTENT),
+                        "document.mime_type"),
+                arguments("content that is not Base64",
+                        requestWithDocument(userId, "2018.pdf", "application/pdf", "not base64!"), "document.content"),
+                arguments("content over 5 MB", requestWithDocument(userId, "2018.pdf", "application/pdf", tooLarge),
+                        "document.content"),
+                arguments("empty body", "", "body"));
+    }
+
+    static Stream<Arguments> bodiesThatAreNotValidJson() {
+        var userId = randomUserId();
+        return Stream.of(
                 arguments("malformed JSON", """
                         {"user_id": "%s", """.formatted(userId)),
                 arguments("data after the JSON object", request(userId) + " {}"),
                 arguments("duplicate key", """
                         {"user_id": "%s", "user_id": "%s", "accreditation_type": "BY_INCOME", "document": %s}"""
-                        .formatted(userId, userId, DOCUMENT)),
-                arguments("empty body", ""));
+                        .formatted(userId, userId, DOCUMENT)));
     }
 
     private static UUID submit(String userId) {

@@ -27,7 +27,8 @@ public class AdminAccreditationResource {
     // 202 rather than 201: the accreditation is recorded asynchronously, once its event is consumed.
     @POST
     @RunOnVirtualThread
-    public RestResponse<AccreditationIdResponse> submit(@Valid @NotNull SubmitAccreditationRequest request) {
+    public RestResponse<AccreditationIdResponse> submit(
+            @Valid @NotNull(message = "must not be empty") SubmitAccreditationRequest request) {
         var id = submitAccreditation.submit(requestMapper.toCommand(request));
         return RestResponse.status(RestResponse.Status.ACCEPTED, new AccreditationIdResponse(id.value()));
     }
