@@ -14,6 +14,8 @@ public enum ApiError {
     USER_NOT_FOUND(404, "User not found", "We couldn't find any accreditation records for this user."),
     METHOD_NOT_ALLOWED(405, "Method not allowed", "This endpoint does not support the requested HTTP method."),
     NOT_ACCEPTABLE(406, "Not acceptable", "This endpoint only returns application/json."),
+    ACCREDITATION_ALREADY_PENDING(409, "Accreditation already pending",
+            "This user already has a pending accreditation request. Please wait until it has been reviewed."),
     REQUEST_TOO_LARGE(413, "Request too large", "The request body is larger than the allowed limit."),
     UNSUPPORTED_MEDIA_TYPE(415, "Unsupported media type", "Please send the request body as application/json."),
     UNEXPECTED_ERROR(500, "Something went wrong", "An unexpected error occurred. Please try again later."),

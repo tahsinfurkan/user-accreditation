@@ -66,6 +66,29 @@ class AccreditationRepositoryImplTest {
         assertThat(idsOf(summariesOf(userId))).containsExactly(first.id());
     }
 
+    @Test
+    void knowsWhetherAUserHasAPendingAccreditation() {
+        var userId = new UserId(UUID.randomUUID().toString().replace("-", ""));
+        assertThat(hasPending(userId)).isFalse();
+
+        QuarkusTransaction.requiringNew().run(() -> repository.insert(pendingAccreditation(userId)));
+
+        assertThat(hasPending(userId)).isTrue();
+    }
+
+    @Test
+    void refusesASecondPendingAccreditationForTheSameUser() {
+        var userId = new UserId(UUID.randomUUID().toString().replace("-", ""));
+        QuarkusTransaction.requiringNew().run(() -> repository.insert(pendingAccreditation(userId)));
+
+        assertThatThrownBy(() -> QuarkusTransaction.requiringNew().run(() -> repository.insert(pendingAccreditation(userId))))
+                .hasStackTraceContaining("ux_accreditation_pending_user");
+    }
+
+    private boolean hasPending(UserId userId) {
+        return QuarkusTransaction.requiringNew().call(() -> repository.existsPendingFor(userId));
+    }
+
     private List<AccreditationSummary> summariesOf(UserId userId) {
         return QuarkusTransaction.requiringNew().call(() -> repository.findSummariesByUserId(userId));
     }

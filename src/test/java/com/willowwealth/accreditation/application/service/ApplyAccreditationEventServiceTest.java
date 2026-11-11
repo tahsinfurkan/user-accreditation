@@ -42,6 +42,17 @@ class ApplyAccreditationEventServiceTest {
         assertThat(accreditations.inserts).isEqualTo(1);
     }
 
+    @Test
+    void rejectsASecondSubmissionWhileTheUserHasAPendingOne() {
+        var first = submitted();
+        var second = submitted();
+
+        service.apply(first);
+        service.apply(second);
+
+        assertThat(accreditations.byId).containsOnlyKeys(first.accreditationId());
+    }
+
     private static AccreditationSubmitted submitted() {
         var document = new DocumentReference(UUID.randomUUID(), "2018.pdf", "application/pdf", 42, "c0ffee");
         return Accreditation.submit(AccreditationId.newId(), new UserId("g8NlYJnk7zK9BlB1J2Ebjs0AkhCTpE1V"),

@@ -24,6 +24,13 @@ public class ApplyAccreditationEventService implements ApplyAccreditationEventUs
             log.debug("Accreditation {} is already recorded, skipping event {}", event.accreditationId(), event.eventId());
             return;
         }
+        // The API checks this as well, but two submissions of the same user can pass that check at the same time.
+        // A rejection is not a failure: the event is acknowledged and never retried.
+        if (repository.existsPendingFor(event.userId())) {
+            log.warn("Rejected accreditation {} of user {}: the user already has a pending accreditation",
+                    event.accreditationId(), event.userId());
+            return;
+        }
         repository.insert(Accreditation.from(event));
         log.info("Accreditation {} recorded as PENDING for user {}", event.accreditationId(), event.userId());
     }

@@ -7,6 +7,7 @@ import com.willowwealth.accreditation.adapter.out.persistence.projection.Accredi
 import com.willowwealth.accreditation.application.port.out.AccreditationRepository;
 import com.willowwealth.accreditation.domain.model.Accreditation;
 import com.willowwealth.accreditation.domain.model.AccreditationId;
+import com.willowwealth.accreditation.domain.model.AccreditationStatus;
 import com.willowwealth.accreditation.domain.model.AccreditationSummary;
 import com.willowwealth.accreditation.domain.model.UserId;
 import io.quarkus.cache.Cache;
@@ -51,6 +52,12 @@ public class AccreditationRepositoryImpl
     public void insert(Accreditation accreditation) {
         persist(mapper.toEntity(accreditation));
         evictAfterCommit(accreditation.userId());
+    }
+
+    // Read from the database on purpose: this check has to see the latest state, not a cached one.
+    @Override
+    public boolean existsPendingFor(UserId userId) {
+        return count("userId = ?1 and status = ?2", userId.value(), AccreditationStatus.PENDING) > 0;
     }
 
     @Override

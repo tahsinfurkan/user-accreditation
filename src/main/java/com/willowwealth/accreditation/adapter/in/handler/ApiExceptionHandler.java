@@ -12,6 +12,7 @@ import com.willowwealth.accreditation.adapter.in.response.ErrorResponse;
 import com.willowwealth.accreditation.adapter.in.response.FieldError;
 import com.willowwealth.accreditation.application.exception.EventPublicationException;
 import com.willowwealth.accreditation.domain.exception.AccreditationException;
+import com.willowwealth.accreditation.domain.exception.PendingAccreditationExistsException;
 import com.willowwealth.accreditation.domain.exception.UserNotFoundException;
 import io.vertx.core.http.HttpServerRequest;
 import jakarta.validation.ConstraintViolation;
@@ -64,6 +65,7 @@ public class ApiExceptionHandler {
     public RestResponse<ErrorResponse> ruleBroken(AccreditationException exception, HttpServerRequest request) {
         var error = switch (exception) {
             case UserNotFoundException notFound -> ApiError.USER_NOT_FOUND;
+            case PendingAccreditationExistsException pending -> ApiError.ACCREDITATION_ALREADY_PENDING;
         };
         return clientError(request, error, null, exception.getMessage());
     }

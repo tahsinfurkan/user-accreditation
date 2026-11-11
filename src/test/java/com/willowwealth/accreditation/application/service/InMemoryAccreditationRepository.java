@@ -3,6 +3,7 @@ package com.willowwealth.accreditation.application.service;
 import com.willowwealth.accreditation.application.port.out.AccreditationRepository;
 import com.willowwealth.accreditation.domain.model.Accreditation;
 import com.willowwealth.accreditation.domain.model.AccreditationId;
+import com.willowwealth.accreditation.domain.model.AccreditationStatus;
 import com.willowwealth.accreditation.domain.model.AccreditationSummary;
 import com.willowwealth.accreditation.domain.model.UserId;
 
@@ -25,6 +26,13 @@ class InMemoryAccreditationRepository implements AccreditationRepository {
     public void insert(Accreditation accreditation) {
         byId.put(accreditation.id(), accreditation);
         inserts++;
+    }
+
+    @Override
+    public boolean existsPendingFor(UserId userId) {
+        return byId.values().stream()
+                .anyMatch(accreditation -> accreditation.userId().equals(userId)
+                        && accreditation.status() == AccreditationStatus.PENDING);
     }
 
     @Override

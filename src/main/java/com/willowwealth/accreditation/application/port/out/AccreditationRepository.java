@@ -13,6 +13,8 @@ public interface AccreditationRepository {
 
     void insert(Accreditation accreditation);
 
+    boolean existsPendingFor(UserId userId);
+
     /**
      * Returns the user's accreditations, oldest first.
      */
