@@ -15,6 +15,7 @@ import io.quarkus.cache.CacheName;
 import io.quarkus.cache.CacheResult;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import io.quarkus.panache.common.Sort;
+import io.smallrye.faulttolerance.api.ApplyGuard;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Status;
 import jakarta.transaction.Synchronization;
@@ -25,6 +26,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+
+import static com.willowwealth.accreditation.config.CircuitBreakerProducer.DATABASE;
 
 @Slf4j
 @ApplicationScoped
@@ -46,17 +49,20 @@ public class AccreditationRepositoryImpl
     }
 
     @Override
+    @ApplyGuard(DATABASE)
     public Optional<Accreditation> findById(AccreditationId id) {
         return findByIdOptional(id.value()).map(mapper::toDomain);
     }
 
     @Override
+    @ApplyGuard(DATABASE)
     public void insert(Accreditation accreditation) {
         persist(mapper.toEntity(accreditation));
         evictAfterCommit(accreditation.userId());
     }
 
     @Override
+    @ApplyGuard(DATABASE)
     public void update(Accreditation accreditation) {
         var entity = findByIdOptional(accreditation.id().value()).orElseThrow();
         mapper.updateEntity(accreditation, entity);
@@ -65,6 +71,7 @@ public class AccreditationRepositoryImpl
 
     // Read from the database on purpose: this check has to see the latest state, not a cached one.
     @Override
+    @ApplyGuard(DATABASE)
     public boolean existsPendingFor(UserId userId) {
         return count("userId = ?1 and status = ?2", userId.value(), AccreditationStatus.PENDING) > 0;
     }
@@ -72,6 +79,7 @@ public class AccreditationRepositoryImpl
     // Keyset pagination: the consumer may expire rows while the job is still paging,
     // which would shift an offset and make it skip rows.
     @Override
+    @ApplyGuard(DATABASE)
     public List<Accreditation> findConfirmedUpdatedBefore(Instant cutoff, Accreditation after, int limit) {
         var order = Sort.by("updatedAt").and("id");
         var query = after == null
@@ -87,8 +95,10 @@ public class AccreditationRepositoryImpl
     }
 
     // Cached in Redis, so every instance shares the entry. Quarkus also intercepts calls a bean makes to its
-    // own methods, which is why the cache applies to this internal call.
+    // own methods, which is why the cache applies to this internal call. The cache sits in front of the circuit
+    // breaker: a cached entry is served even while the database circuit is open.
     @CacheResult(cacheName = USER_ACCREDITATIONS_CACHE)
+    @ApplyGuard(DATABASE)
     AccreditationSummaryRows summaryRows(String userId) {
         log.debug("Loading the accreditations of user {} from the database", userId);
         return new AccreditationSummaryRows(find("userId", Sort.by("createdAt"), userId)

@@ -11,6 +11,7 @@ import com.willowwealth.accreditation.adapter.in.filter.TraceIdFilter;
 import com.willowwealth.accreditation.adapter.in.response.ErrorResponse;
 import com.willowwealth.accreditation.adapter.in.response.FieldError;
 import com.willowwealth.accreditation.application.exception.EventPublicationException;
+import com.willowwealth.accreditation.config.CircuitBreakerConfig;
 import com.willowwealth.accreditation.domain.exception.AccreditationException;
 import com.willowwealth.accreditation.domain.exception.AccreditationNotFoundException;
 import com.willowwealth.accreditation.domain.exception.InvalidStatusTransitionException;
@@ -24,6 +25,7 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import lombok.extern.slf4j.Slf4j;
+import org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException;
 import org.jboss.resteasy.reactive.RestResponse;
 import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
 import org.slf4j.MDC;
@@ -39,6 +41,13 @@ public class ApiExceptionHandler {
 
     private static final PropertyNamingStrategies.NamingBase SNAKE_CASE = new PropertyNamingStrategies.SnakeCaseStrategy();
     private static final int RETRY_AFTER_SECONDS = 5;
+
+    // A request turned away by an open circuit is told to come back once the circuit lets calls through again.
+    private final long circuitRetryAfterSeconds;
+
+    ApiExceptionHandler(CircuitBreakerConfig circuitBreakers) {
+        this.circuitRetryAfterSeconds = circuitBreakers.delay().toSeconds();
+    }
 
     @ServerExceptionMapper
     public RestResponse<ErrorResponse> invalidFields(ConstraintViolationException exception, HttpServerRequest request) {
@@ -103,6 +112,10 @@ public class ApiExceptionHandler {
 
     @ServerExceptionMapper
     public RestResponse<ErrorResponse> unavailable(EventPublicationException exception, HttpServerRequest request) {
+        // The publisher reports an open Kafka circuit breaker this way as well.
+        if (exception.getCause() instanceof CircuitBreakerOpenException) {
+            return turnedAway(request, exception.getMessage());
+        }
         var error = ApiError.SERVICE_UNAVAILABLE;
         log.error("{} {} -> {} {}: {}", request.method(), request.path(), error.getStatus(), error,
                 exception.getMessage(), exception);
@@ -112,11 +125,26 @@ public class ApiExceptionHandler {
     }
 
     @ServerExceptionMapper
+    public RestResponse<ErrorResponse> circuitOpen(CircuitBreakerOpenException exception, HttpServerRequest request) {
+        return turnedAway(request, exception.getMessage());
+    }
+
+    @ServerExceptionMapper
     public RestResponse<ErrorResponse> unexpected(Throwable exception, HttpServerRequest request) {
         var error = ApiError.UNEXPECTED_ERROR;
         log.error("{} {} -> {} {}: {}", request.method(), request.path(), error.getStatus(), error,
                 exception.getMessage(), exception);
         return response(error, null).build();
+    }
+
+    // The failures that opened the circuit were logged as errors already, so the requests it turns away only get
+    // a warning each.
+    private RestResponse<ErrorResponse> turnedAway(HttpServerRequest request, String reason) {
+        var error = ApiError.CIRCUIT_OPEN;
+        log.warn("{} {} -> {} {}: {}", request.method(), request.path(), error.getStatus(), error, reason);
+        return response(error, null)
+                .header(HttpHeaders.RETRY_AFTER, circuitRetryAfterSeconds)
+                .build();
     }
 
     private static RestResponse<ErrorResponse> clientError(HttpServerRequest request, ApiError error,

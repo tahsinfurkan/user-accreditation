@@ -28,6 +28,9 @@ public enum ApiError {
     UNSUPPORTED_MEDIA_TYPE(415, "Unsupported media type", "Please send the request body as application/json."),
     UNEXPECTED_ERROR(500, "Something went wrong", "An unexpected error occurred. Please try again later."),
     SERVICE_UNAVAILABLE(503, "Service temporarily unavailable",
+            "We couldn't process your request right now. Please try again in a moment."),
+    // The client gets the same text; the separate name tells the logs that a circuit breaker turned the request away.
+    CIRCUIT_OPEN(503, "Service temporarily unavailable",
             "We couldn't process your request right now. Please try again in a moment.");
 
     private final int status;

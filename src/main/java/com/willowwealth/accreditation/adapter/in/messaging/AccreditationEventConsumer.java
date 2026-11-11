@@ -45,9 +45,10 @@ public class AccreditationEventConsumer {
         }
     }
 
-    // Four attempts in all, 200, 400 and 800 ms apart. The use case is @Transactional,
-    // so every attempt runs in a transaction of its own.
-    @Retry(maxRetries = 3, delay = 200, jitter = 0)
+    // Four attempts in all, 2, 4 and 8 seconds apart. Together they outlast the 10 seconds the database circuit
+    // breaker stays open, so after a short outage the last attempt gets through instead of the event going to the
+    // dead-letter topic. The use case is @Transactional, so every attempt runs in a transaction of its own.
+    @Retry(maxRetries = 3, delay = 2000, jitter = 0)
     @ExponentialBackoff
     void apply(AccreditationEvent event) {
         try {

@@ -6,6 +6,7 @@ import com.willowwealth.accreditation.application.port.out.DocumentRepository;
 import com.willowwealth.accreditation.domain.model.Document;
 import com.willowwealth.accreditation.domain.model.DocumentReference;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
+import io.smallrye.faulttolerance.api.ApplyGuard;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.time.Clock;
 import java.util.UUID;
+
+import static com.willowwealth.accreditation.config.CircuitBreakerProducer.DATABASE;
 
 @Slf4j
 @ApplicationScoped
@@ -24,6 +27,7 @@ public class DocumentRepositoryImpl implements DocumentRepository, PanacheReposi
 
     @Override
     @Transactional
+    @ApplyGuard(DATABASE)
     public DocumentReference save(Document document) {
         var reference = DocumentReference.of(UUID.randomUUID(), document);
         persist(mapper.toEntity(reference, document.content(), clock.instant()));
