@@ -14,6 +14,8 @@ import java.util.UUID;
 public record AccreditationEventMessage(
         UUID eventId,
         EventType eventType,
+        // Missing on the events written before it existed, which are version 1.
+        Integer schemaVersion,
         UUID accreditationId,
         String userId,
         AccreditationType accreditationType,
@@ -22,6 +24,9 @@ public record AccreditationEventMessage(
         ChangeOrigin origin,
         ZonedDateTime occurredAt,
         DocumentMessage document) {
+
+    // Goes up only with a change that consumers reading an older version can't handle.
+    public static final int SCHEMA_VERSION = 1;
 
     public enum EventType {
         ACCREDITATION_SUBMITTED,

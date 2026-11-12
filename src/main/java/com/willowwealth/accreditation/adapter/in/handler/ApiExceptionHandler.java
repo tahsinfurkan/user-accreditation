@@ -19,6 +19,7 @@ import com.willowwealth.accreditation.domain.exception.PendingAccreditationExist
 import com.willowwealth.accreditation.domain.exception.UserNotFoundException;
 import io.smallrye.faulttolerance.api.RateLimitException;
 import io.vertx.core.http.HttpServerRequest;
+import jakarta.persistence.PersistenceException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.ElementKind;
@@ -31,6 +32,7 @@ import org.jboss.resteasy.reactive.RestResponse;
 import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
 import org.slf4j.MDC;
 
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -143,6 +145,19 @@ public class ApiExceptionHandler {
     }
 
     @ServerExceptionMapper
+    public RestResponse<ErrorResponse> databaseFailed(PersistenceException exception, HttpServerRequest request) {
+        if (!unreachable(exception)) {
+            return unexpected(exception, request);
+        }
+        var error = ApiError.DATABASE_UNAVAILABLE;
+        log.error("{} {} -> {} {}: {}", request.method(), request.path(), error.getStatus(), error,
+                exception.getMessage(), exception);
+        return response(error, null)
+                .header(HttpHeaders.RETRY_AFTER, RETRY_AFTER_SECONDS)
+                .build();
+    }
+
+    @ServerExceptionMapper
     public RestResponse<ErrorResponse> unexpected(Throwable exception, HttpServerRequest request) {
         var error = ApiError.UNEXPECTED_ERROR;
         log.error("{} {} -> {} {}: {}", request.method(), request.path(), error.getStatus(), error,
@@ -195,6 +210,19 @@ public class ApiExceptionHandler {
                         ? reference.getFieldName()
                         : String.valueOf(reference.getIndex()))
                 .collect(Collectors.joining("."));
+    }
+
+    // SQLState class 08 is a connection problem and 57P an operator stopping the server. Not getting a connection from
+    // the pool in time comes without a SQLState, only with Hibernate's wording, and means the same to the client.
+    // Either way the request can work once PostgreSQL is back; any other database error is a bug.
+    private static boolean unreachable(Throwable exception) {
+        for (var cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sql && sql.getSQLState() != null
+                    && (sql.getSQLState().startsWith("08") || sql.getSQLState().startsWith("57P"))) {
+                return true;
+            }
+        }
+        return exception.getMessage() != null && exception.getMessage().startsWith("Unable to acquire JDBC Connection");
     }
 
     private static String problemWith(MismatchedInputException exception) {

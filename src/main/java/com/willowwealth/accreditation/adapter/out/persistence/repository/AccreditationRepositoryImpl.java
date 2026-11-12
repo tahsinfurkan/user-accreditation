@@ -17,11 +17,14 @@ import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import io.quarkus.panache.common.Sort;
 import io.smallrye.faulttolerance.api.ApplyGuard;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.persistence.PersistenceException;
 import jakarta.transaction.Status;
 import jakarta.transaction.Synchronization;
 import jakarta.transaction.TransactionSynchronizationRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException;
 
+import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -35,6 +38,7 @@ public class AccreditationRepositoryImpl
         implements AccreditationRepository, PanacheRepositoryBase<AccreditationEntity, UUID> {
 
     static final String USER_ACCREDITATIONS_CACHE = "user-accreditations";
+    private static final Duration EVICTION_TIMEOUT = Duration.ofSeconds(1);
 
     private final AccreditationEntityMapper mapper;
     private final Cache userAccreditations;
@@ -89,15 +93,31 @@ public class AccreditationRepositoryImpl
         return query.range(0, limit - 1).list().stream().map(mapper::toDomain).toList();
     }
 
+    // Redis is only a shortcut: when it can't be reached, the rows come straight from the database. A failure of the
+    // database itself is passed on, since asking it a second time wouldn't help.
     @Override
     public List<AccreditationSummary> findSummariesByUserId(UserId userId) {
-        return mapper.toSummaries(summaryRows(userId.value()).rows());
+        AccreditationSummaryRows rows;
+        try {
+            rows = cachedSummaryRows(userId.value());
+        } catch (PersistenceException | CircuitBreakerOpenException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            log.warn("The cache is unavailable, reading the accreditations of user {} from the database: {}", userId,
+                    e.toString());
+            rows = summaryRows(userId.value());
+        }
+        return mapper.toSummaries(rows.rows());
     }
 
     // Cached in Redis, so every instance shares the entry. Quarkus also intercepts calls a bean makes to its
-    // own methods, which is why the cache applies to this internal call. The cache sits in front of the circuit
-    // breaker: a cached entry is served even while the database circuit is open.
+    // own methods, which is why the cache applies to this internal call. A cached entry is served even while the
+    // database circuit is open.
     @CacheResult(cacheName = USER_ACCREDITATIONS_CACHE)
+    AccreditationSummaryRows cachedSummaryRows(String userId) {
+        return summaryRows(userId);
+    }
+
     @ApplyGuard(DATABASE)
     AccreditationSummaryRows summaryRows(String userId) {
         log.debug("Loading the accreditations of user {} from the database", userId);
@@ -115,9 +135,16 @@ public class AccreditationRepositoryImpl
 
             @Override
             public void afterCompletion(int status) {
-                if (status == Status.STATUS_COMMITTED) {
-                    userAccreditations.invalidate(userId.value()).await().indefinitely();
+                if (status != Status.STATUS_COMMITTED) {
+                    return;
+                }
+                // The write is committed either way; a stale entry only lives until it expires.
+                try {
+                    userAccreditations.invalidate(userId.value()).await().atMost(EVICTION_TIMEOUT);
                     log.debug("Evicted the cached accreditations of user {}", userId);
+                } catch (RuntimeException e) {
+                    log.warn("Could not evict the cached accreditations of user {}, they stay until they expire: {}",
+                            userId, e.toString());
                 }
             }
         });

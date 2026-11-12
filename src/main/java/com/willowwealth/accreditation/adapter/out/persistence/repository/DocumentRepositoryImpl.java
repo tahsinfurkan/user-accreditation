@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.time.Clock;
 import java.time.ZonedDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
 import static com.willowwealth.accreditation.config.CircuitBreakerProducer.DATABASE;
@@ -34,5 +35,17 @@ public class DocumentRepositoryImpl implements DocumentRepository, PanacheReposi
         persist(mapper.toEntity(reference, document.content(), ZonedDateTime.now(clock)));
         log.debug("Stored document {} ({} bytes, sha256 {})", reference.id(), reference.sizeBytes(), reference.sha256());
         return reference;
+    }
+
+    @Override
+    @ApplyGuard(DATABASE)
+    public Optional<Document> findDocument(UUID id) {
+        return findByIdOptional(id).map(mapper::toDomain);
+    }
+
+    @Override
+    @ApplyGuard(DATABASE)
+    public int deleteUnreferencedCreatedBefore(ZonedDateTime cutoff) {
+        return (int) delete("createdAt < ?1 and id not in (select a.documentId from AccreditationEntity a)", cutoff);
     }
 }

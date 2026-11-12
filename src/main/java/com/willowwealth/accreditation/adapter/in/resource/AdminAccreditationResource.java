@@ -6,8 +6,10 @@ import com.willowwealth.accreditation.adapter.in.request.FinalizeAccreditationRe
 import com.willowwealth.accreditation.adapter.in.request.SubmitAccreditationRequest;
 import com.willowwealth.accreditation.adapter.in.response.AccreditationHistoryResponse;
 import com.willowwealth.accreditation.adapter.in.response.AccreditationIdResponse;
+import com.willowwealth.accreditation.application.port.in.query.GetAccreditationDocumentQuery;
 import com.willowwealth.accreditation.application.port.in.query.GetAccreditationHistoryQuery;
 import com.willowwealth.accreditation.application.port.in.usecase.FinalizeAccreditationUseCase;
+import com.willowwealth.accreditation.application.port.in.usecase.GetAccreditationDocumentUseCase;
 import com.willowwealth.accreditation.application.port.in.usecase.GetAccreditationHistoryUseCase;
 import com.willowwealth.accreditation.application.port.in.usecase.SubmitAccreditationUseCase;
 import com.willowwealth.accreditation.domain.model.AccreditationId;
@@ -23,9 +25,11 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import lombok.RequiredArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.headers.Header;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -35,6 +39,8 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import org.jboss.resteasy.reactive.RestPath;
 import org.jboss.resteasy.reactive.RestResponse;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import static com.willowwealth.accreditation.config.OpenApiDocumentation.ACCREDITATION_ALREADY_PENDING;
@@ -44,6 +50,7 @@ import static com.willowwealth.accreditation.config.OpenApiDocumentation.REQUEST
 import static com.willowwealth.accreditation.config.OpenApiDocumentation.SERVICE_UNAVAILABLE;
 import static com.willowwealth.accreditation.config.OpenApiDocumentation.STATUS_CHANGE_NOT_ALLOWED;
 import static com.willowwealth.accreditation.config.OpenApiDocumentation.TOO_MANY_REQUESTS;
+import static com.willowwealth.accreditation.config.RateLimitProducer.DOCUMENT_RATE_LIMIT;
 import static com.willowwealth.accreditation.config.RateLimitProducer.FINALIZE_RATE_LIMIT;
 import static com.willowwealth.accreditation.config.RateLimitProducer.HISTORY_RATE_LIMIT;
 import static com.willowwealth.accreditation.config.RateLimitProducer.SUBMIT_RATE_LIMIT;
@@ -59,6 +66,7 @@ public class AdminAccreditationResource {
     private final SubmitAccreditationUseCase submitAccreditation;
     private final FinalizeAccreditationUseCase finalizeAccreditation;
     private final GetAccreditationHistoryUseCase getAccreditationHistory;
+    private final GetAccreditationDocumentUseCase getAccreditationDocument;
     private final AccreditationRequestMapper requestMapper;
     private final AccreditationResponseMapper responseMapper;
     private final MeterRegistry registry;
@@ -90,7 +98,8 @@ public class AdminAccreditationResource {
     @ApplyGuard(FINALIZE_RATE_LIMIT)
     @Operation(summary = "Finalize an accreditation",
             description = "Publishes the outcome; the accreditation shows it once its event is consumed. Allowed "
-                    + "changes: PENDING to CONFIRMED or FAILED, and CONFIRMED to EXPIRED. FAILED and EXPIRED are final.")
+                    + "changes: PENDING to CONFIRMED or FAILED, and CONFIRMED to EXPIRED. FAILED and EXPIRED are final. "
+                    + "Asking for the status the accreditation already has is accepted and changes nothing.")
     @APIResponse(responseCode = "202", description = "Accepted",
             headers = @Header(name = "X-Request-Id", ref = REQUEST_ID),
             content = @Content(schema = @Schema(implementation = AccreditationIdResponse.class)))
@@ -127,5 +136,32 @@ public class AdminAccreditationResource {
             @RestPath @Pattern(regexp = AccreditationId.PATTERN, message = "must be a valid UUID") String accreditationId) {
         var query = new GetAccreditationHistoryQuery(new AccreditationId(UUID.fromString(accreditationId)));
         return responseMapper.toHistoryResponse(getAccreditationHistory.get(query));
+    }
+
+    @GET
+    @Path("{accreditationId}/document")
+    @Produces("application/pdf")
+    @RunOnVirtualThread
+    @ApplyGuard(DOCUMENT_RATE_LIMIT)
+    @Operation(summary = "Download the document of an accreditation",
+            description = "The file the accreditation was submitted with, for the administrator to review.")
+    @APIResponse(responseCode = "200", description = "The document",
+            headers = @Header(name = "X-Request-Id", ref = REQUEST_ID),
+            content = @Content(mediaType = "application/pdf",
+                    schema = @Schema(type = SchemaType.STRING, format = "binary")))
+    @APIResponse(responseCode = "400", ref = INVALID_REQUEST)
+    @APIResponse(responseCode = "404", ref = ACCREDITATION_NOT_FOUND)
+    @APIResponse(responseCode = "429", ref = TOO_MANY_REQUESTS)
+    @APIResponse(responseCode = "503", ref = SERVICE_UNAVAILABLE)
+    public RestResponse<byte[]> document(
+            @Parameter(description = "Id of the accreditation", example = "87bb6030-458e-11ed-b023-039b275a916a")
+            @RestPath @Pattern(regexp = AccreditationId.PATTERN, message = "must be a valid UUID") String accreditationId) {
+        var document = getAccreditationDocument.get(
+                new GetAccreditationDocumentQuery(new AccreditationId(UUID.fromString(accreditationId))));
+        // The name comes from the client, so it is percent-encoded rather than quoted into the header.
+        var fileName = URLEncoder.encode(document.name(), StandardCharsets.UTF_8).replace("+", "%20");
+        return RestResponse.ResponseBuilder.ok(document.content(), document.mimeType())
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + fileName)
+                .build();
     }
 }

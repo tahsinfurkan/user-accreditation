@@ -12,10 +12,12 @@ import io.smallrye.faulttolerance.api.ExponentialBackoff;
 import jakarta.enterprise.context.ApplicationScoped;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.eclipse.microprofile.faulttolerance.Retry;
 import org.eclipse.microprofile.reactive.messaging.Incoming;
 import org.slf4j.MDC;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 @Slf4j
@@ -25,6 +27,7 @@ public class AccreditationEventConsumer {
 
     private static final String EVENT_ID = "event_id";
     private static final String ACCREDITATION_ID = "accreditation_id";
+    private static final String TRACE_ID = "trace_id";
     private static final String PROJECTED_EVENTS = "accreditation.projected.events";
     private static final String DEAD_LETTERED_EVENTS = "accreditation.dead.lettered.events";
 
@@ -34,13 +37,21 @@ public class AccreditationEventConsumer {
 
     // @Blocking keeps the order of each partition. @RunOnVirtualThread would process
     // messages concurrently and could apply two events of the same user out of order.
+    // The channel runs three copies (concurrency=3), each with its own partitions and thread, so the retries of one
+    // event hold up only the events behind it on the same partition.
     // An exception thrown from here nacks the message and the failure strategy moves it to the dead-letter topic.
     // Messages that are not valid JSON go there as well, without ever reaching this method.
     @Incoming("accreditation-events-in")
     @Blocking
-    public void consume(AccreditationEventMessage message) {
+    public void consume(ConsumerRecord<String, AccreditationEventMessage> record) {
+        var message = record.value();
         MDC.put(EVENT_ID, String.valueOf(message.eventId()));
         MDC.put(ACCREDITATION_ID, String.valueOf(message.accreditationId()));
+        // Set by the publisher, so these log lines can be matched with the request that published the event.
+        var traceId = record.headers().lastHeader(TRACE_ID);
+        if (traceId != null) {
+            MDC.put(TRACE_ID, new String(traceId.value(), StandardCharsets.UTF_8));
+        }
         try {
             // Mapping is not retried: a message that can't be turned into an event won't become one later.
             count(apply(mapper.toEvent(message)));
@@ -51,6 +62,7 @@ public class AccreditationEventConsumer {
         } finally {
             MDC.remove(EVENT_ID);
             MDC.remove(ACCREDITATION_ID);
+            MDC.remove(TRACE_ID);
         }
     }
 

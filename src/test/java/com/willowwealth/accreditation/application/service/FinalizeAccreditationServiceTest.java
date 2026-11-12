@@ -69,6 +69,16 @@ class FinalizeAccreditationServiceTest {
         assertThat(published).isEmpty();
     }
 
+    @Test
+    void publishesNothingWhenTheAccreditationAlreadyHasTheStatus() {
+        var accreditation = pendingAccreditation().withStatus(CONFIRMED);
+        accreditations.insert(accreditation);
+
+        service.finalizeAccreditation(new FinalizeAccreditationCommand(accreditation.id(), CONFIRMED));
+
+        assertThat(published).isEmpty();
+    }
+
     private static Accreditation pendingAccreditation() {
         var submittedAt = NOW.minusSeconds(3600);
         return Accreditation.builder()

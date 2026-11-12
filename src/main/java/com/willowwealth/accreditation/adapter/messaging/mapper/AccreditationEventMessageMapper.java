@@ -13,7 +13,7 @@ import org.mapstruct.Mapping;
 
 import java.util.UUID;
 
-@Mapper
+@Mapper(imports = AccreditationEventMessage.class)
 public interface AccreditationEventMessageMapper {
 
     default AccreditationEventMessage toMessage(AccreditationEvent event) {
@@ -24,6 +24,10 @@ public interface AccreditationEventMessageMapper {
     }
 
     default AccreditationEvent toEvent(AccreditationEventMessage message) {
+        if (message.schemaVersion() != null && message.schemaVersion() > AccreditationEventMessage.SCHEMA_VERSION) {
+            throw new IllegalArgumentException("Event %s has schema version %d, this consumer reads up to %d"
+                    .formatted(message.eventId(), message.schemaVersion(), AccreditationEventMessage.SCHEMA_VERSION));
+        }
         return switch (message.eventType()) {
             case ACCREDITATION_SUBMITTED -> toSubmitted(message);
             case ACCREDITATION_STATUS_CHANGED -> toStatusChanged(message);
@@ -31,12 +35,14 @@ public interface AccreditationEventMessageMapper {
     }
 
     @Mapping(target = "eventType", constant = "ACCREDITATION_SUBMITTED")
+    @Mapping(target = "schemaVersion", expression = "java(AccreditationEventMessage.SCHEMA_VERSION)")
     @Mapping(target = "accreditationType", source = "type")
     @Mapping(target = "previousStatus", ignore = true)
     @Mapping(target = "newStatus", constant = "PENDING")
     AccreditationEventMessage fromSubmitted(AccreditationSubmitted event);
 
     @Mapping(target = "eventType", constant = "ACCREDITATION_STATUS_CHANGED")
+    @Mapping(target = "schemaVersion", expression = "java(AccreditationEventMessage.SCHEMA_VERSION)")
     @Mapping(target = "accreditationType", source = "type")
     @Mapping(target = "document", ignore = true)
     AccreditationEventMessage fromStatusChanged(AccreditationStatusChanged event);

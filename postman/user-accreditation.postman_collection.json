@@ -39,7 +39,7 @@
 								"ready"
 							]
 						},
-						"description": "UP once PostgreSQL, Redis and Kafka can be reached. `run.sh` waits on the same endpoint."
+						"description": "UP once PostgreSQL and Kafka can be reached; Redis is only a cache and is left out. `run.sh` waits on the same endpoint."
 					},
 					"response": []
 				}
@@ -282,6 +282,43 @@
 							]
 						},
 						"description": "Every status change of the accreditation, oldest first, with who made it and when."
+					},
+					"response": []
+				},
+				{
+					"name": "Download the document",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Returns the submitted PDF', () => {",
+									"    pm.response.to.have.status(200);",
+									"    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/pdf');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation/{{accreditationId}}/document",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation",
+								"{{accreditationId}}",
+								"document"
+							]
+						},
+						"description": "The file the accreditation was submitted with."
 					},
 					"response": []
 				}

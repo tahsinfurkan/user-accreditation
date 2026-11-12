@@ -18,6 +18,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.Objects;
@@ -85,7 +86,12 @@ class AdminAccreditationResourceTest {
     @Test
     void publishesTheSubmissionKeyedByUser() {
         var userId = randomUserId();
-        var accreditationId = submit(userId);
+        var requestId = UUID.randomUUID().toString();
+        var accreditationId = UUID.fromString(given().contentType(ContentType.JSON).header("X-Request-Id", requestId)
+                .body(request(userId))
+                .when().post(ENDPOINT)
+                .then().statusCode(202)
+                .extract().jsonPath().getString("accreditation_id"));
 
         var record = kafka.consumeStrings()
                 .withOffsetReset("earliest")
@@ -95,12 +101,16 @@ class AdminAccreditationResourceTest {
 
         var event = new JsonPath(record.value());
         assertThat(event.getString("event_type")).isEqualTo("ACCREDITATION_SUBMITTED");
+        assertThat(event.getInt("schema_version")).isEqualTo(1);
         assertThat(event.getString("accreditation_id")).isEqualTo(accreditationId.toString());
         assertThat(event.getString("new_status")).isEqualTo("PENDING");
         assertThat(event.getString("origin")).isEqualTo("ADMIN");
         assertThat(event.getString("document.sha256")).hasSize(64);
         // Only a reference to the document travels through Kafka, never the file itself.
         assertThat(record.value()).doesNotContain(SPEC_CONTENT);
+        // The consumer logs it, so its log lines can be matched with this request.
+        assertThat(new String(record.headers().lastHeader("trace_id").value(), StandardCharsets.UTF_8))
+                .isEqualTo(requestId);
     }
 
     @Test

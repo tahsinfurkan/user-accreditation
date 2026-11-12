@@ -36,6 +36,7 @@ All paths start with `/api/v1`, so the challenge's `POST /user/accreditation` is
 | `PUT` | `/api/v1/user/accreditation/{accreditationId}` | admin | `202` with `{"accreditation_id": "…"}` |
 | `GET` | `/api/v1/user/{userId}/accreditation` | client | `200`; `404` if the user has no accreditation |
 | `GET` | `/api/v1/user/accreditation/{accreditationId}/history` | admin | `200` with every status change (not in the challenge) |
+| `GET` | `/api/v1/user/accreditation/{accreditationId}/document` | admin | `200` with the submitted PDF (not in the challenge) |
 
 ```bash
 curl -i -X POST http://localhost:9999/api/v1/user/accreditation \
@@ -58,7 +59,7 @@ The developer portal at http://localhost:9999 explains the lifecycle, the events
 
 The rules:
 
-- `PENDING` can become `CONFIRMED` or `FAILED`, and `CONFIRMED` can become `EXPIRED`. `FAILED` and `EXPIRED` are final. Any other change, including one to the current status, gets `409`, so a `PENDING` accreditation can't be expired through the API.
+- `PENDING` can become `CONFIRMED` or `FAILED`, and `CONFIRMED` can become `EXPIRED`. `FAILED` and `EXPIRED` are final. Any other change gets `409`, so a `PENDING` accreditation can't be expired through the API. Asking for the status an accreditation already has is accepted and changes nothing, so a request sent again, for example after a `503`, is safe.
 - A user can have only one `PENDING` accreditation; another submission gets `409`.
 - A job expires `CONFIRMED` accreditations whose last update is more than 30 days old. It runs when the service starts and then every hour.
 - Validation is strict. `user_id` is exactly 32 letters or digits, `mime_type` has to be `application/pdf`, and `content` has to be Base64 and at most 5 MB once decoded. Unknown or missing fields, wrong types and unknown values get `400`. I don't check that the file really is a PDF, because the sample content in the challenge isn't one.
@@ -110,7 +111,7 @@ The code is hexagonal (ports and adapters). The domain holds the state machine a
 
 Writes are event-first. For a submission, the API validates the request and checks the current state in PostgreSQL. It then stores the document and publishes an `ACCREDITATION_SUBMITTED` event, and answers once Kafka has acknowledged it. The consumer is the only writer to the database. In one transaction it skips events it has already applied, checks the rules again against the latest state, and writes the accreditation and a history row. After the commit it evicts the user's entry from the Redis cache. The client `GET` reads from that cache, or from PostgreSQL on a miss.
 
-The topic is keyed by `user_id`, so all events of a user land on one partition and are applied in order. It keeps its records forever, because it is the audit log; the history table is the same log, queryable. An event has an id and type, the accreditation and user, the previous and new status, its origin (`ADMIN` or `SYSTEM_EXPIRY`) and its time. A submission event also carries a reference to the document: its id, name, type, size and SHA-256. The file itself stays in PostgreSQL and never goes through Kafka.
+The topic is keyed by `user_id`, so all events of a user land on one partition and are applied in order. The consumer runs one thread per partition, so an event that is being retried holds up only the events behind it on its own partition. It keeps its records forever, because it is the audit log; the history table is the same log, queryable. An event has an id and type, the accreditation and user, the previous and new status, its origin (`ADMIN` or `SYSTEM_EXPIRY`), its time and a schema version. The trace id of the request that published it travels as a Kafka header. A submission event also carries a reference to the document: its id, name, type, size and SHA-256. The file itself stays in PostgreSQL and never goes through Kafka.
 
 Patterns, briefly:
 
@@ -154,19 +155,20 @@ Either way, I would also accept an `Idempotency-Key` so a retried request can't 
 ## Failures and trade-offs
 
 - **Retries and the dead-letter topic.** The consumer retries a failing event three more times, 2, 4 and 8 seconds apart, then moves it to `accreditation-status-events-dlq` with the reason in its headers. Unreadable messages go there straight away. An event rejected by the rules is not a failure: it is logged and counted, and doesn't go to the dead-letter topic.
-- **Circuit breakers.** Kafka and PostgreSQL each have one. While a breaker is open, requests are turned away at once with `503` instead of waiting on a dependency that is down.
+- **Circuit breakers.** Kafka and PostgreSQL each have one. While a breaker is open, requests are turned away at once with `503` instead of waiting on a dependency that is down. A request that fails because PostgreSQL can't be reached gets `503` too, before the breaker opens.
+- **Redis is only a cache.** If Redis can't be reached, the client endpoint reads from PostgreSQL, and readiness doesn't depend on Redis. If evicting an entry fails, the entry is out of date until it expires, after 10 minutes.
 - **Rate limits.** Each admin endpoint accepts 10 requests a second and the client endpoint 100. The window is rolling, and rejected requests count too, so a client has to wait for `Retry-After`.
 - **What a `503` from Kafka means.** Every request sends its own event and waits for Kafka's answer. When Kafka doesn't acknowledge it, the producer gives up within a few seconds and the API answers `503` only after that, so the event isn't sent later behind the client's back, even when many requests fail at once. The one exception is a request the broker had already received but couldn't answer in time, which can still be written. A retry then gets `409`, and a `GET` shows the real state.
 - **No automatic expiry for `PENDING`.** `PENDING` accreditations don't expire automatically, because the challenge asks this only for `CONFIRMED` ones.
 - **Ordering after the dead-letter topic.** After a long outage, an event that went to the dead-letter topic can cause later events for the same accreditation to be rejected. The dead-letter topic has to be replayed first, in order.
-- **Orphaned documents.** If publishing fails after the document is stored, the document is left without an accreditation; a cleanup job would remove such documents.
+- **Orphaned documents.** A document is stored before its submission is published. If publishing fails, or the consumer rejects the submission, the document is left without an accreditation; a job deletes such documents once they are a day old, every hour.
 - **Several instances.** The expiry job skips overlapping runs only within one instance. With several instances, the consumer's compare-and-set makes a duplicate expiry harmless; clustered Quartz would avoid the duplicate run.
 - **Single-node Kafka.** Kafka runs as a single node with a replication factor of 1. That's fine for running locally, but not for production.
 - **Times.** Times are shown in Europe/Malta time with the offset of the day (`+01:00` in winter, `+02:00` in summer). PostgreSQL stores them as instants (`timestamptz`).
 
 ## Observability
 
-- **Logs.** Every log line of a request has its `trace_id`; every log line of the consumer has the event and accreditation ids.
+- **Logs.** Every log line of a request has its `trace_id`; every log line of the consumer has the event and accreditation ids, and the trace id of the request that published the event.
 - **Metrics.** `/q/metrics`, scraped by Prometheus, shows:
   - `accreditation_submissions_total`, `accreditation_finalizations_total` and `accreditation_expiries_total`
   - `accreditation_projected_events_total{result, reason}`
@@ -174,7 +176,7 @@ Either way, I would also accept an `Idempotency-Key` so a retried request can't 
   - HTTP, JVM and Kafka client metrics
   - the retry, circuit breaker and rate limit metrics of SmallRye Fault Tolerance
 - **Dashboard.** Grafana at http://localhost:3000 opens on a dashboard of these metrics, with no login: the accreditation counters, HTTP traffic and response times, rate limits, circuit breakers, retries, consumer lag and heap.
-- **Health.** `/q/health/ready` reports whether PostgreSQL, Redis and Kafka can be reached; `run.sh` waits on it.
+- **Health.** `/q/health/ready` reports whether PostgreSQL and Kafka can be reached; `run.sh` waits on it. Redis is left out, because the service works without it.
 
 ## Tests
 

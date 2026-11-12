@@ -30,7 +30,10 @@ public enum ApiError {
     UNEXPECTED_ERROR(500, "Something went wrong", "An unexpected error occurred. Please try again later."),
     SERVICE_UNAVAILABLE(503, "Service temporarily unavailable",
             "We couldn't process your request right now. Please try again in a moment."),
-    // The client gets the same text; the separate name tells the logs that a circuit breaker turned the request away.
+    // The client gets the same text; the separate names tell the logs that PostgreSQL could not be reached, or that
+    // a circuit breaker turned the request away.
+    DATABASE_UNAVAILABLE(503, "Service temporarily unavailable",
+            "We couldn't process your request right now. Please try again in a moment."),
     CIRCUIT_OPEN(503, "Service temporarily unavailable",
             "We couldn't process your request right now. Please try again in a moment.");
 

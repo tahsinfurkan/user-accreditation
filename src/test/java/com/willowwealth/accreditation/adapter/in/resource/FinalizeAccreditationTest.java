@@ -15,6 +15,7 @@ import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.time.Duration;
 import java.time.ZonedDateTime;
@@ -113,13 +114,10 @@ class FinalizeAccreditationTest {
     @ParameterizedTest(name = "{0} -> {1}")
     @CsvSource(delimiter = '|', textBlock = """
             PENDING   | EXPIRED   | A PENDING accreditation can only be changed to CONFIRMED or FAILED.
-            CONFIRMED | CONFIRMED | A CONFIRMED accreditation can only be changed to EXPIRED.
             CONFIRMED | FAILED    | A CONFIRMED accreditation can only be changed to EXPIRED.
             FAILED    | CONFIRMED | A FAILED accreditation can no longer be updated.
             FAILED    | EXPIRED   | A FAILED accreditation can no longer be updated.
-            FAILED    | FAILED    | A FAILED accreditation can no longer be updated.
             EXPIRED   | CONFIRMED | An EXPIRED accreditation can no longer be updated.
-            EXPIRED   | EXPIRED   | An EXPIRED accreditation can no longer be updated.
             EXPIRED   | FAILED    | An EXPIRED accreditation can no longer be updated.
             """)
     void rejectsAChangeTheCurrentStatusDoesNotAllow(AccreditationStatus current, String outcome, String detail) {
@@ -128,6 +126,14 @@ class FinalizeAccreditationTest {
         var error = assertErrorBody(putOutcome(id, outcome), 409, "Status change not allowed");
 
         assertThat(error.getString("detail")).isEqualTo(detail);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = AccreditationStatus.class, names = {"CONFIRMED", "FAILED", "EXPIRED"})
+    void acceptsTheStatusTheAccreditationAlreadyHas(AccreditationStatus current) {
+        var id = existingAccreditation(current);
+
+        putOutcome(id, current.name()).statusCode(202);
     }
 
     @Test

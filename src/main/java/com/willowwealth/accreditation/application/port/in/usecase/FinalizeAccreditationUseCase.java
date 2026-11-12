@@ -7,7 +7,8 @@ import com.willowwealth.accreditation.domain.exception.InvalidStatusTransitionEx
 public interface FinalizeAccreditationUseCase {
 
     /**
-     * Publishes the status change. The accreditation shows the new status once its event is consumed.
+     * Publishes the status change. The accreditation shows the new status once its event is consumed. Nothing is
+     * published if the accreditation already has that status.
      *
      * @throws AccreditationNotFoundException   if there is no such accreditation
      * @throws InvalidStatusTransitionException if the current status does not allow the outcome

@@ -17,7 +17,9 @@ import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException;
+import org.slf4j.MDC;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -39,6 +41,8 @@ import static org.apache.kafka.clients.producer.ProducerConfig.REQUEST_TIMEOUT_M
 @Slf4j
 @ApplicationScoped
 public class AccreditationEventPublisherImpl implements AccreditationEventPublisher {
+
+    private static final String TRACE_ID = "trace_id";
 
     private final Producer<String, AccreditationEventMessage> producer;
     private final AccreditationEventMessageMapper mapper;
@@ -82,8 +86,7 @@ public class AccreditationEventPublisherImpl implements AccreditationEventPublis
         try {
             // Keyed by user, so all events of one user land on the same partition and stay in order. send() itself
             // blocks for at most max.block.ms while the producer has no metadata for the topic.
-            producer.send(new ProducerRecord<>(topic, message.userId(), message))
-                    .get(acknowledgementTimeout.toMillis(), TimeUnit.MILLISECONDS);
+            producer.send(record(message)).get(acknowledgementTimeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw notAcknowledged(message, e);
@@ -92,6 +95,17 @@ public class AccreditationEventPublisherImpl implements AccreditationEventPublis
         } catch (TimeoutException | RuntimeException e) {
             throw notAcknowledged(message, e);
         }
+    }
+
+    // The trace id of the request travels as a header, so the consumer's log lines carry it too. Events of the expiry
+    // job have none.
+    private ProducerRecord<String, AccreditationEventMessage> record(AccreditationEventMessage message) {
+        var record = new ProducerRecord<>(topic, message.userId(), message);
+        var traceId = MDC.get(TRACE_ID);
+        if (traceId != null) {
+            record.headers().add(TRACE_ID, traceId.getBytes(StandardCharsets.UTF_8));
+        }
+        return record;
     }
 
     @PreDestroy

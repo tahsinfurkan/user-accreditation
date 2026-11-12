@@ -12,20 +12,27 @@ import io.smallrye.reactive.messaging.kafka.companion.KafkaCompanion;
 import jakarta.inject.Inject;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.header.internals.RecordHeader;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.willowwealth.accreditation.adapter.in.Counters.count;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.hamcrest.Matchers.equalTo;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -116,6 +123,36 @@ class AccreditationEventConsumerTest {
         assertThat(firstDeadLetterFor(key).value()).isEqualTo("{\"event_id\": ");
         assertThat(count(registry, DEAD_LETTERED, "reason", "unreadable")).isEqualTo(deadLettered + 1);
         given().when().get("/q/health").then().statusCode(200);
+    }
+
+    @Test
+    void deadLettersAnEventOfANewerSchemaVersionWithoutApplyingIt() {
+        var userId = newUserId();
+        var eventId = UUID.randomUUID();
+
+        produce(userId, statusChange(eventId, UUID.randomUUID(), userId).replace("{", "{\"schema_version\": 2, "));
+
+        assertThat(header(firstDeadLetterFor(userId), "dead-letter-reason")).contains("schema version 2");
+        verify(applyAccreditationEvent, never()).apply(argThat(event -> eventId.equals(event.eventId())));
+    }
+
+    @Test
+    void logsTheTraceIdOfTheRequestThatPublishedTheEvent() {
+        var userId = newUserId();
+        var eventId = UUID.randomUUID();
+        var traceId = UUID.randomUUID().toString();
+        var seen = new AtomicReference<String>();
+        doAnswer(invocation -> {
+            seen.set(MDC.get("trace_id"));
+            return invocation.callRealMethod();
+        }).when(applyAccreditationEvent).apply(argThat(event -> eventId.equals(event.eventId())));
+
+        kafka.produceStrings().fromRecords(new ProducerRecord<>(TOPIC, null, userId,
+                        submission(eventId, UUID.randomUUID(), userId),
+                        List.of(new RecordHeader("trace_id", traceId.getBytes(StandardCharsets.UTF_8)))))
+                .awaitCompletion();
+
+        await().atMost(Duration.ofSeconds(10)).untilAtomic(seen, equalTo(traceId));
     }
 
     @Test

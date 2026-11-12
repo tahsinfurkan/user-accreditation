@@ -16,6 +16,7 @@ public class RateLimitProducer {
     public static final String SUBMIT_RATE_LIMIT = "submit-rate-limit";
     public static final String FINALIZE_RATE_LIMIT = "finalize-rate-limit";
     public static final String HISTORY_RATE_LIMIT = "history-rate-limit";
+    public static final String DOCUMENT_RATE_LIMIT = "document-rate-limit";
     public static final String USER_ACCREDITATIONS_RATE_LIMIT = "user-accreditations-rate-limit";
 
     @Produces
@@ -37,6 +38,13 @@ public class RateLimitProducer {
     @Identifier(HISTORY_RATE_LIMIT)
     Guard history(RateLimitConfig config) {
         return rateLimit(HISTORY_RATE_LIMIT, config.admin(), config);
+    }
+
+    @Produces
+    @Singleton
+    @Identifier(DOCUMENT_RATE_LIMIT)
+    Guard document(RateLimitConfig config) {
+        return rateLimit(DOCUMENT_RATE_LIMIT, config.admin(), config);
     }
 
     @Produces

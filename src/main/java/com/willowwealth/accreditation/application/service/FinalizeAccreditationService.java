@@ -23,10 +23,16 @@ public class FinalizeAccreditationService implements FinalizeAccreditationUseCas
     private final Clock clock;
 
     // Like a submission, this only publishes the change; the consumer checks it again before writing it.
+    // Asking for the status the accreditation already has changes nothing, so a request that is sent again, for
+    // example after a 503, gets the same answer as the first one instead of 409.
     @Override
     public void finalizeAccreditation(FinalizeAccreditationCommand command) {
         var accreditation = repository.findById(command.accreditationId())
                 .orElseThrow(() -> new AccreditationNotFoundException(command.accreditationId()));
+        if (accreditation.status() == command.outcome()) {
+            log.info("Accreditation {} is already {}, nothing to change", accreditation.id(), command.outcome());
+            return;
+        }
         var change = accreditation.changeStatus(command.outcome(), ChangeOrigin.ADMIN, ZonedDateTime.now(clock));
 
         eventPublisher.publish(change);

@@ -10,12 +10,18 @@ import io.smallrye.faulttolerance.api.CircuitBreakerMaintenance;
 import io.smallrye.reactive.messaging.kafka.companion.KafkaCompanion;
 import jakarta.inject.Inject;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.hibernate.exception.GenericJDBCException;
+import org.hibernate.exception.JDBCConnectionException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
+import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static com.willowwealth.accreditation.adapter.in.handler.ErrorBodyAssertions.assertErrorBody;
 import static com.willowwealth.accreditation.adapter.in.resource.AccreditationRequests.newUserId;
@@ -54,8 +60,32 @@ class DatabaseCircuitBreakerTest {
     KafkaCompanion kafka;
 
     @AfterEach
-    void closeTheCircuits() {
+    void repairEverything() {
+        repairTheDatabase();
         circuitBreakers.resetAll();
+    }
+
+    // What Hibernate throws, before the circuit has opened, when PostgreSQL refuses the connection and when the pool
+    // has no connection to give in time.
+    static Stream<RuntimeException> unreachable() {
+        return Stream.of(
+                new JDBCConnectionException("Unable to acquire JDBC Connection",
+                        new SQLException("The connection attempt failed.", "08001")),
+                new GenericJDBCException("Unable to acquire JDBC Connection [Sorry, acquisition timeout!] [n/a]",
+                        new SQLException("Sorry, acquisition timeout!")));
+    }
+
+    @ParameterizedTest
+    @MethodSource("unreachable")
+    void answersServiceUnavailableWhenTheDatabaseCannotBeReached(RuntimeException failure) {
+        var id = submit(newUserId(), "BY_INCOME");
+        waitForStatus(accreditations, id, PENDING);
+        doThrow(failure).when(entityMapper).toDomain(any(AccreditationEntity.class));
+
+        var response = putOutcome(id, "CONFIRMED");
+
+        assertErrorBody(response, 503, "Service temporarily unavailable");
+        response.header("Retry-After", "5");
     }
 
     @Test
