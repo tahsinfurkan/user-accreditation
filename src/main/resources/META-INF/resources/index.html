@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>User Accreditation API</title>
+    <link rel="stylesheet" href="/q/swagger-ui/swagger-ui.css">
+    <link rel="stylesheet" href="portal.css">
+</head>
+<body>
+<aside>
+    <a class="brand" href="#home"><span class="mark">UA</span>User Accreditation</a>
+    <nav>
+        <a href="#home">Home</a>
+        <a href="#api">User Accreditation API</a>
+        <p class="nav-title">Documentation</p>
+        <a href="#lifecycle">Lifecycle and Rules</a>
+        <a href="#events">Events</a>
+        <a href="#limits">Limits and Monitoring</a>
+    </nav>
+</aside>
+
+<main>
+    <section id="home">
+        <h1>User Accreditation API</h1>
+        <p class="lead">Welcome to the developer portal of the User Accreditation Service. Administrators use the API to
+            submit accreditations and decide on them, and the client-facing app uses it to read the current status of a
+            user's accreditations.</p>
+
+        <h2>About the Project</h2>
+        <p>The service is built with <strong>Quarkus</strong> on Java 21. Writes are event-first: the API checks a
+            request against the current state, publishes an event to Kafka and answers <code>202 Accepted</code>. A
+            consumer applies the events to PostgreSQL, which serves the reads. Kafka keeps every event, so the topic is
+            also the audit log of every accreditation.</p>
+
+        <h2>Key Features</h2>
+        <ul class="features">
+            <li><strong>Submission:</strong> <code>POST /user/accreditation</code> takes the user, the accreditation
+                type and a PDF document, and starts the accreditation as <code>PENDING</code></li>
+            <li><strong>Finalization:</strong> <code>PUT /user/accreditation/{accreditationId}</code> confirms, fails or
+                expires an accreditation, as far as its lifecycle allows</li>
+            <li><strong>Client Status:</strong> <code>GET /user/{userId}/accreditation</code> returns every
+                accreditation of a user, served from a Redis cache</li>
+            <li><strong>History:</strong> every status change of an accreditation, with its origin and time</li>
+            <li><strong>Automatic Expiry:</strong> <code>CONFIRMED</code> accreditations expire 30 days after their last
+                update</li>
+            <li><strong>Event Log:</strong> Kafka events keyed by user, applied in order, duplicates skipped, with a
+                dead-letter topic for the ones that keep failing</li>
+            <li><strong>Validation:</strong> strict request checks and one error body with field errors and a trace
+                id</li>
+            <li><strong>Resilience:</strong> consumer retries, circuit breakers for Kafka and PostgreSQL, rate limits and
+                graceful shutdown</li>
+            <li><strong>Metrics &amp; Monitoring:</strong> Prometheus metrics, health checks and a trace id on every log
+                line</li>
+        </ul>
+
+        <h2>Technology Stack</h2>
+        <table>
+            <tr><th>Runtime</th><td>Java 21, Quarkus 3.40 (LTS)</td></tr>
+            <tr><th>Messaging</th><td>Apache Kafka 4.4 (KRaft), SmallRye Reactive Messaging</td></tr>
+            <tr><th>Database</th><td>PostgreSQL 18, Hibernate ORM with Panache, Flyway</td></tr>
+            <tr><th>Cache</th><td>Redis 8</td></tr>
+            <tr><th>Resilience</th><td>SmallRye Fault Tolerance</td></tr>
+            <tr><th>Observability</th><td>Micrometer, Prometheus, SmallRye Health</td></tr>
+            <tr><th>Code</th><td>Lombok, MapStruct</td></tr>
+            <tr><th>Containers</th><td>Docker Compose, Eclipse Temurin 21</td></tr>
+        </table>
+
+        <h2>Getting Started</h2>
+        <p>Start everything with <code>./run.sh</code> from the project root. The endpoints are under
+            <code>http://localhost:9999/api/v1</code>; the <a href="#api">API page</a> lists them and can send requests
+            to them. The OpenAPI document is at <a href="/q/openapi">/q/openapi</a>.</p>
+    </section>
+
+    <section id="api" hidden>
+        <h1>User Accreditation API</h1>
+        <p class="lead">Submitting and finalizing answer <code>202</code>: the change is published to Kafka first and
+            shows up once the consumer has written it to the database. Every response carries an
+            <code>X-Request-Id</code> header, which error bodies repeat as <code>trace_id</code>. Times are in
+            Europe/Malta time, with the offset of that day.</p>
+        <div id="swagger-ui"></div>
+    </section>
+
+    <section id="lifecycle" hidden>
+        <h1>Lifecycle and Rules</h1>
+        <p class="lead">An accreditation starts as <code>PENDING</code> when it is submitted. An administrator's
+            decision or the expiry job moves it on. The rules are checked twice: by the API when a request comes in, and
+            by the consumer against the latest state before anything is written.</p>
+
+        <h2>Statuses</h2>
+        <table>
+            <thead><tr><th>From</th><th>To</th><th>How</th></tr></thead>
+            <tbody>
+            <tr><td></td><td><code>PENDING</code></td><td><code>POST /user/accreditation</code></td></tr>
+            <tr><td><code>PENDING</code></td><td><code>CONFIRMED</code></td><td><code>PUT</code> with outcome <code>CONFIRMED</code></td></tr>
+            <tr><td><code>PENDING</code></td><td><code>FAILED</code></td><td><code>PUT</code> with outcome <code>FAILED</code></td></tr>
+            <tr><td><code>CONFIRMED</code></td><td><code>EXPIRED</code></td><td><code>PUT</code> with outcome <code>EXPIRED</code>, or the expiry job after 30 days</td></tr>
+            </tbody>
+        </table>
+        <p><code>FAILED</code> and <code>EXPIRED</code> are final. Any other change, including one to the status the
+            accreditation already has, is answered with <code>409 Conflict</code>, so a <code>PENDING</code>
+            accreditation can't be expired through the API.</p>
+
+        <h2>Rules</h2>
+        <ul class="features">
+            <li><strong>One Pending Accreditation per User:</strong> while a user has a <code>PENDING</code>
+                accreditation, another submission gets <code>409</code>. A unique index in PostgreSQL holds the same
+                rule.</li>
+            <li><strong>Automatic Expiry:</strong> a job expires <code>CONFIRMED</code> accreditations whose last update
+                is more than 30 days old. It runs when the service starts and then every hour, and its changes have the
+                origin <code>SYSTEM_EXPIRY</code>.</li>
+            <li><strong>Concurrent Decisions:</strong> a status change carries the status it was decided on and is
+                applied only if the accreditation still has it. When two administrators decide at the same time, the
+                first change wins and the consumer rejects the other.</li>
+            <li><strong>Accepted, Then Applied:</strong> <code>POST</code> and <code>PUT</code> answer once the event is
+                in Kafka. The change shows up a moment later, so right after a user's first submission the client
+                endpoint can still answer <code>404</code>.</li>
+        </ul>
+
+        <h2>Validation</h2>
+        <table>
+            <thead><tr><th>Field</th><th>Rule</th></tr></thead>
+            <tbody>
+            <tr><td><code>user_id</code></td><td>exactly 32 letters or digits</td></tr>
+            <tr><td><code>accreditation_type</code></td><td><code>BY_INCOME</code> or <code>BY_NET_WORTH</code></td></tr>
+            <tr><td><code>document.name</code></td><td>not blank, at most 255 characters</td></tr>
+            <tr><td><code>document.mime_type</code></td><td><code>application/pdf</code></td></tr>
+            <tr><td><code>document.content</code></td><td>Base64, at most 5 MB once decoded</td></tr>
+            <tr><td><code>outcome</code></td><td><code>CONFIRMED</code>, <code>FAILED</code> or <code>EXPIRED</code></td></tr>
+            </tbody>
+        </table>
+        <p>Unknown or missing fields, wrong types and malformed JSON get <code>400</code>. Like every error, it comes
+            with <code>message</code>, <code>detail</code> and <code>trace_id</code>; validation errors also list the
+            fields under <code>errors</code>.</p>
+    </section>
+
+    <section id="events" hidden>
+        <h1>Events</h1>
+        <p class="lead">Every change to an accreditation is an event on Kafka. The consumer that keeps the database up
+            to date is part of this service, and other services can read the same topic.</p>
+
+        <h2>Topic</h2>
+        <table>
+            <tr><th>Name</th><td><code>accreditation-status-events</code></td></tr>
+            <tr><th>Key</th><td><code>user_id</code>, so all events of a user are on one partition, in order</td></tr>
+            <tr><th>Partitions</th><td>3</td></tr>
+            <tr><th>Retention</th><td>forever: the topic is the audit log</td></tr>
+            <tr><th>Format</th><td>JSON in snake_case; times in Europe/Malta time with the offset of that day</td></tr>
+        </table>
+
+        <h2>Submission</h2>
+        <pre><code>{
+  "event_id": "078ac063-7505-4cdd-b4b9-8ebb9b4bc2f3",
+  "event_type": "ACCREDITATION_SUBMITTED",
+  "accreditation_id": "a2922d58-9369-4b83-9774-de9b2dbb575d",
+  "user_id": "g8NlYJnk7zK9BlB1J2Ebjs0AkhCTpE1V",
+  "accreditation_type": "BY_INCOME",
+  "previous_status": null,
+  "new_status": "PENDING",
+  "origin": "ADMIN",
+  "occurred_at": "2026-11-12T09:14:43.171678092+01:00",
+  "document": {
+    "document_id": "69c80824-0722-478d-9e22-61e13a341d8a",
+    "name": "2018.pdf",
+    "mime_type": "application/pdf",
+    "size_bytes": 31,
+    "sha256": "c9bbbad5e1a3506e1553f2a9e8b4b0326e49ccfe60ab33be0d81c6f12d4ce111"
+  }
+}</code></pre>
+        <p>The document is stored once, in PostgreSQL. The event only refers to it, with its size and SHA-256.</p>
+
+        <h2>Status Change</h2>
+        <pre><code>{
+  "event_id": "16e12f10-a093-47aa-9633-5882c1fd9493",
+  "event_type": "ACCREDITATION_STATUS_CHANGED",
+  "accreditation_id": "a2922d58-9369-4b83-9774-de9b2dbb575d",
+  "user_id": "g8NlYJnk7zK9BlB1J2Ebjs0AkhCTpE1V",
+  "accreditation_type": "BY_INCOME",
+  "previous_status": "PENDING",
+  "new_status": "CONFIRMED",
+  "origin": "ADMIN",
+  "occurred_at": "2026-11-12T09:14:49.081630515+01:00",
+  "document": null
+}</code></pre>
+        <p><code>previous_status</code> is the status the change was decided on. <code>origin</code> is
+            <code>ADMIN</code> for changes made through the API and <code>SYSTEM_EXPIRY</code> for the expiry job.</p>
+
+        <h2>Delivery</h2>
+        <ul class="features">
+            <li><strong>Duplicates:</strong> Kafka delivers at least once, so the consumer skips an event whose
+                <code>event_id</code> it has already applied.</li>
+            <li><strong>Retries:</strong> a failing event is tried three more times, 2, 4 and 8 seconds apart.</li>
+            <li><strong>Dead-Letter Topic:</strong> <code>accreditation-status-events-dlq</code> gets the events that
+                still fail, and right away the messages that aren't valid JSON. The headers
+                <code>dead-letter-reason</code>, <code>dead-letter-topic</code>, <code>dead-letter-partition</code> and
+                <code>dead-letter-offset</code> tell why and where from. It keeps its records forever as well.</li>
+            <li><strong>Rejections:</strong> an event that no longer fits the stored state, such as the losing one of two
+                decisions, is not an error. It is logged and counted, and doesn't go to the dead-letter topic.</li>
+        </ul>
+    </section>
+
+    <section id="limits" hidden>
+        <h1>Limits and Monitoring</h1>
+        <p class="lead">How much traffic the API takes, what it answers while Kafka or PostgreSQL is down, and where to
+            look when something goes wrong.</p>
+
+        <h2>Rate Limits</h2>
+        <table>
+            <thead><tr><th>Endpoint</th><th>Requests a second</th></tr></thead>
+            <tbody>
+            <tr><td><code>POST /user/accreditation</code></td><td>10</td></tr>
+            <tr><td><code>PUT /user/accreditation/{accreditationId}</code></td><td>10</td></tr>
+            <tr><td><code>GET /user/accreditation/{accreditationId}/history</code></td><td>10</td></tr>
+            <tr><td><code>GET /user/{userId}/accreditation</code></td><td>100</td></tr>
+            </tbody>
+        </table>
+        <p>Each endpoint has its own limit over a rolling one-second window. Beyond it the answer is <code>429</code>
+            with <code>Retry-After</code>. Rejected requests count towards the window too, so wait as long as
+            <code>Retry-After</code> says.</p>
+
+        <h2>When Kafka or PostgreSQL Is Down</h2>
+        <ul class="features">
+            <li><strong>Kafka:</strong> when Kafka doesn't acknowledge an event, the producer gives up within a few
+                seconds and the API answers <code>503</code> with <code>Retry-After: 5</code>. The event is not sent
+                later.</li>
+            <li><strong>Circuit Breakers:</strong> Kafka and PostgreSQL each have one. When at least half of the last 10
+                calls failed, it opens for 10 seconds, and requests get <code>503</code> with <code>Retry-After: 10</code>
+                at once.</li>
+            <li><strong>Consumer:</strong> its retries take longer than a circuit stays open, so a short database outage
+                doesn't send events to the dead-letter topic.</li>
+            <li><strong>Shutdown:</strong> when the service stops, requests already running get up to 30 seconds to
+                finish.</li>
+        </ul>
+
+        <h2>Tracing a Request</h2>
+        <p>Every response carries an <code>X-Request-Id</code> header, error bodies repeat it as <code>trace_id</code>,
+            and every log line of the request has it. The consumer's log lines have <code>event_id</code> and
+            <code>accreditation_id</code> instead.</p>
+
+        <h2>Metrics</h2>
+        <p><a href="/q/metrics">/q/metrics</a> serves the metrics in Prometheus format. The Prometheus started by
+            Docker Compose reads them every 5 seconds, at <code>http://localhost:9090</code>.</p>
+        <table>
+            <thead><tr><th>Metric</th><th>Counts</th></tr></thead>
+            <tbody>
+            <tr><td><code>accreditation_submissions_total{type}</code></td><td>accepted submissions</td></tr>
+            <tr><td><code>accreditation_finalizations_total{outcome}</code></td><td>accepted decisions</td></tr>
+            <tr><td><code>accreditation_expiries_total</code></td><td>expiries published by the job</td></tr>
+            <tr><td><code>accreditation_projected_events_total{result, reason}</code></td><td>what the consumer did with each event: applied, duplicate or rejected, and why</td></tr>
+            <tr><td><code>accreditation_dead_lettered_events_total{reason}</code></td><td>messages sent to the dead-letter topic: failed or unreadable</td></tr>
+            </tbody>
+        </table>
+        <p>HTTP, JVM and Kafka client metrics come with them, and so do the retry, circuit breaker and rate limit
+            metrics of SmallRye Fault Tolerance.</p>
+
+        <h2>Health</h2>
+        <p><a href="/q/health">/q/health</a> reports liveness and readiness. <code>/q/health/ready</code> is
+            <code>UP</code> once PostgreSQL, Redis and Kafka can be reached; <code>run.sh</code> waits on it.</p>
+    </section>
+</main>
+
+<script src="/q/swagger-ui/swagger-ui-bundle.js"></script>
+<script src="portal.js"></script>
+</body>
+</html>

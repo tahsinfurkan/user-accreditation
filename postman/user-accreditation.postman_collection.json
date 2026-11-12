@@ -1,0 +1,1064 @@
+{
+	"info": {
+		"_postman_id": "3f6b2c1e-9a4d-4b8e-8c27-5e1d0a7f4b92",
+		"name": "User Accreditation",
+		"description": "Requests for the user accreditation service.\n\nStart the stack from the project root with `./run.sh`. The API answers on http://localhost:9999 (`baseUrl`), Kafka UI on http://localhost:8080, Redis Insight on http://localhost:5540 and Prometheus on http://localhost:9090. The API itself is documented at http://localhost:9999/q/swagger-ui.\n\nSubmitting and finalizing answer 202: the change goes to Kafka first and the consumer writes it to the database a moment later. The scripts wait a second after each 202, so every folder can also be run top to bottom in the Collection Runner.\n\nEach admin endpoint accepts 10 requests a second and the client endpoint 100; beyond that the answer is 429 with `Retry-After`.\n\n`Submit accreditation` uses a new random `userId` each time and stores the `accreditationId` it gets back. The requests after it reuse both.\n\n`Prometheus metrics` comes last, so the counters it checks have been through the requests before it. Prometheus scrapes the same endpoint every 5 seconds.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health",
+			"item": [
+				{
+					"name": "Readiness",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Service is ready', () => {",
+									"    pm.response.to.have.status(200);",
+									"    pm.expect(pm.response.json().status).to.eql('UP');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/q/health/ready",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"q",
+								"health",
+								"ready"
+							]
+						},
+						"description": "UP once PostgreSQL, Redis and Kafka can be reached. `run.sh` waits on the same endpoint."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Submit and review",
+			"description": "Submit an accreditation, look it up, confirm it, expire it, then read its history.",
+			"item": [
+				{
+					"name": "Submit accreditation",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// A new user every time, so the request can be sent again without running into the pending one.",
+									"pm.collectionVariables.set('userId', pm.variables.replaceIn('{{$guid}}').replace(/-/g, ''));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Accepted', () => {",
+									"    pm.response.to.have.status(202);",
+									"    pm.collectionVariables.set('accreditationId', pm.response.json().accreditation_id);",
+									"});",
+									"",
+									"// The consumer stores the accreditation a moment after the 202. Wait for it before the next request reads it.",
+									"setTimeout(() => {}, 1000);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"user_id\": \"{{userId}}\",\n    \"accreditation_type\": \"BY_INCOME\",\n    \"document\": {\n        \"name\": \"2018.pdf\",\n        \"mime_type\": \"application/pdf\",\n        \"content\": \"ICAiQC8qIjogWyJzcmMvKiJdCiAgICB9CiAgfQp9Cg==\"\n    }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation"
+							]
+						},
+						"description": "Records a new accreditation request as PENDING and answers with its id. The document is the one from the task's example.\n\nIf Kafka can't take the event, the answer is 503 with a `Retry-After` header. Try it with `docker compose stop kafka`."
+					},
+					"response": []
+				},
+				{
+					"name": "Get user accreditations",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Lists the new accreditation as pending', () => {",
+									"    pm.response.to.have.status(200);",
+									"    const statuses = pm.response.json().accreditation_statuses;",
+									"    pm.expect(statuses[pm.collectionVariables.get('accreditationId')].status).to.eql('PENDING');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/{{userId}}/accreditation",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"{{userId}}",
+								"accreditation"
+							]
+						},
+						"description": "All accreditations of the user with their type and status, oldest first. Answers come from the Redis cache, which is cleared whenever one of the user's accreditations changes."
+					},
+					"response": []
+				},
+				{
+					"name": "Confirm accreditation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Accepted', () => pm.response.to.have.status(202));",
+									"",
+									"// Give the consumer a moment to apply the change before the next request depends on it.",
+									"setTimeout(() => {}, 1000);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"outcome\": \"CONFIRMED\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation/{{accreditationId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation",
+								"{{accreditationId}}"
+							]
+						},
+						"description": "Allowed changes: PENDING to CONFIRMED or FAILED, CONFIRMED to EXPIRED. FAILED and EXPIRED are final."
+					},
+					"response": []
+				},
+				{
+					"name": "Expire accreditation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Accepted', () => pm.response.to.have.status(202));",
+									"",
+									"// Give the consumer a moment to apply the change before the next request depends on it.",
+									"setTimeout(() => {}, 1000);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"outcome\": \"EXPIRED\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation/{{accreditationId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation",
+								"{{accreditationId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get accreditation history",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Shows every status change in order', () => {",
+									"    pm.response.to.have.status(200);",
+									"    const statuses = pm.response.json().history.map(change => change.new_status);",
+									"    pm.expect(statuses).to.eql(['PENDING', 'CONFIRMED', 'EXPIRED']);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation/{{accreditationId}}/history",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation",
+								"{{accreditationId}}",
+								"history"
+							]
+						},
+						"description": "Every status change of the accreditation, oldest first, with who made it and when."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Business rules",
+			"description": "One pending accreditation per user, and the status changes an admin may make.",
+			"item": [
+				{
+					"name": "Submit accreditation",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// A new user every time, so the request can be sent again without running into the pending one.",
+									"pm.collectionVariables.set('userId', pm.variables.replaceIn('{{$guid}}').replace(/-/g, ''));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Accepted', () => {",
+									"    pm.response.to.have.status(202);",
+									"    pm.collectionVariables.set('accreditationId', pm.response.json().accreditation_id);",
+									"});",
+									"",
+									"// The consumer stores the accreditation a moment after the 202. Wait for it before the next request reads it.",
+									"setTimeout(() => {}, 1000);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"user_id\": \"{{userId}}\",\n    \"accreditation_type\": \"BY_NET_WORTH\",\n    \"document\": {\n        \"name\": \"2018.pdf\",\n        \"mime_type\": \"application/pdf\",\n        \"content\": \"ICAiQC8qIjogWyJzcmMvKiJdCiAgICB9CiAgfQp9Cg==\"\n    }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Submit again while pending",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Rejected while the first one is pending', () => {",
+									"    pm.response.to.have.status(409);",
+									"    pm.expect(pm.response.json().message).to.eql('Accreditation already pending');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"user_id\": \"{{userId}}\",\n    \"accreditation_type\": \"BY_INCOME\",\n    \"document\": {\n        \"name\": \"2019.pdf\",\n        \"mime_type\": \"application/pdf\",\n        \"content\": \"ICAiQC8qIjogWyJzcmMvKiJdCiAgICB9CiAgfQp9Cg==\"\n    }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation"
+							]
+						},
+						"description": "A user can have only one PENDING accreditation at a time."
+					},
+					"response": []
+				},
+				{
+					"name": "Expire a pending accreditation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('A pending accreditation cannot expire', () => {",
+									"    pm.response.to.have.status(409);",
+									"    pm.expect(pm.response.json().detail).to.eql('A PENDING accreditation can only be changed to CONFIRMED or FAILED.');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"outcome\": \"EXPIRED\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation/{{accreditationId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation",
+								"{{accreditationId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Fail accreditation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Accepted', () => pm.response.to.have.status(202));",
+									"",
+									"// Give the consumer a moment to apply the change before the next request depends on it.",
+									"setTimeout(() => {}, 1000);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"outcome\": \"FAILED\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation/{{accreditationId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation",
+								"{{accreditationId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Confirm a failed accreditation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('A failed accreditation is final', () => {",
+									"    pm.response.to.have.status(409);",
+									"    pm.expect(pm.response.json().detail).to.eql('A FAILED accreditation can no longer be updated.');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"outcome\": \"CONFIRMED\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation/{{accreditationId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation",
+								"{{accreditationId}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Errors",
+			"description": "Every error has the same body: `message`, `detail`, `errors` for invalid fields, and `trace_id`, which matches the `X-Request-Id` response header.",
+			"item": [
+				{
+					"name": "Submit with invalid fields",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Names every invalid field', () => {",
+									"    pm.response.to.have.status(400);",
+									"    const fields = pm.response.json().errors.map(error => error.field);",
+									"    pm.expect(fields).to.eql(['document.content', 'document.mime_type', 'document.name', 'user_id']);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"user_id\": \"not-a-user-id\",\n    \"accreditation_type\": \"BY_INCOME\",\n    \"document\": {\n        \"name\": \"\",\n        \"mime_type\": \"image/png\",\n        \"content\": \"not base64!\"\n    }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Submit malformed JSON",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Says the body is not valid JSON', () => {",
+									"    pm.response.to.have.status(400);",
+									"    pm.expect(pm.response.json().detail).to.eql('The request body is not valid JSON. Please send a valid JSON object.');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"user_id\": \"g8NlYJnk7zK9BlB1J2Ebjs0AkhCTpE1V\"\n    \"accreditation_type\": \"BY_INCOME\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation"
+							]
+						},
+						"description": "The comma after `user_id` is missing."
+					},
+					"response": []
+				},
+				{
+					"name": "Submit plain text",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Only JSON is accepted', () => pm.response.to.have.status(415));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "text/plain"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "hello",
+							"options": {
+								"raw": {
+									"language": "text"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Finalize with outcome PENDING",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('PENDING is not an outcome', () => {",
+									"    pm.response.to.have.status(400);",
+									"    pm.expect(pm.response.json().errors).to.eql([{ field: 'outcome', message: 'must be one of CONFIRMED, EXPIRED, FAILED' }]);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"outcome\": \"PENDING\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation/{{$guid}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation",
+								"{{$guid}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Finalize an unknown accreditation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Not found', () => {",
+									"    pm.response.to.have.status(404);",
+									"    pm.expect(pm.response.json().message).to.eql('Accreditation not found');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"outcome\": \"CONFIRMED\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation/{{$guid}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation",
+								"{{$guid}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "History with an invalid id",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('The id must be a UUID', () => {",
+									"    pm.response.to.have.status(400);",
+									"    pm.expect(pm.response.json().errors).to.eql([{ field: 'accreditationId', message: 'must be a valid UUID' }]);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation/not-a-uuid/history",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation",
+								"not-a-uuid",
+								"history"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Accreditations of an unknown user",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.variables.set('unknownUserId', pm.variables.replaceIn('{{$guid}}').replace(/-/g, ''));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Not found', () => {",
+									"    pm.response.to.have.status(404);",
+									"    pm.expect(pm.response.json().message).to.eql('User not found');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/{{unknownUserId}}/accreditation",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"{{unknownUserId}}",
+								"accreditation"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Ask for XML",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Only JSON is returned', () => pm.response.to.have.status(406));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/xml"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/{{userId}}/accreditation",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"{{userId}}",
+								"accreditation"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Unknown URL",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Not found', () => {",
+									"    pm.response.to.have.status(404);",
+									"    pm.expect(pm.response.json().message).to.eql('Resource not found');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/accreditations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"accreditations"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Unsupported method",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Method not allowed', () => pm.response.to.have.status(405));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/user/accreditation/{{$guid}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"user",
+								"accreditation",
+								"{{$guid}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Metrics",
+			"item": [
+				{
+					"name": "Prometheus metrics",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Shows the accreditation counters', () => {",
+									"    pm.response.to.have.status(200);",
+									"    const body = pm.response.text();",
+									"    pm.expect(body).to.include('accreditation_submissions_total');",
+									"    pm.expect(body).to.include('accreditation_finalizations_total');",
+									"    pm.expect(body).to.include('accreditation_projected_events_total');",
+									"});",
+									"pm.test('Shows the consumer retry metrics', () => {",
+									"    pm.expect(pm.response.text()).to.include('ft_retry_calls_total');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/q/metrics",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"q",
+								"metrics"
+							]
+						},
+						"description": "Everything Prometheus scrapes: the accreditation counters, HTTP, JVM and Kafka client metrics, and the retry, circuit breaker and rate limit metrics of SmallRye Fault Tolerance."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"pm.test('Response has a request id', () => pm.response.to.have.header('X-Request-Id'));",
+					"",
+					"// Health checks answer in their own format, so only API errors are checked here.",
+					"if (pm.response.code >= 400 && pm.request.url.getPath().startsWith('/api/')) {",
+					"    pm.test('Error body has the standard shape', () => {",
+					"        const body = pm.response.json();",
+					"        pm.expect(body).to.include.all.keys('message', 'detail', 'trace_id');",
+					"        pm.expect(body.trace_id).to.eql(pm.response.headers.get('X-Request-Id'));",
+					"    });",
+					"}"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:9999",
+			"type": "string"
+		},
+		{
+			"key": "userId",
+			"value": "g8NlYJnk7zK9BlB1J2Ebjs0AkhCTpE1V",
+			"type": "string"
+		},
+		{
+			"key": "accreditationId",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

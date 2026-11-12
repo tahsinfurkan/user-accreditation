@@ -13,6 +13,7 @@ docker compose up --build -d
 echo "Waiting for the service to start..."
 for _ in $(seq 1 90); do
     if curl -fs http://localhost:9999/q/health/ready > /dev/null; then
+        echo "Portal:     http://localhost:9999"
         echo "API:        http://localhost:9999/api/v1"
         echo "Kafka UI:   http://localhost:8080"
         echo "Redis UI:   http://localhost:5540"
