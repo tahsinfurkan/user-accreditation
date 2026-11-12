@@ -1,0 +1,62 @@
+groups:
+  - name: user-accreditation-service
+    rules:
+      - alert: ServiceDown
+        expr: up{job="user-accreditation-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Prometheus has not reached the service for a minute.
+
+      - alert: HighServerErrorRate
+        expr: >
+          sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+          / sum(rate(http_server_requests_seconds_count[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 5% of the requests of the last 5 minutes were answered with a 5xx.
+
+      # A circuit stays open for only 10 seconds at a time, shorter than the evaluation interval, so these rules look
+      # at how often it opened rather than at its current state. The metric is created on the first call, which may
+      # already be the one that opens the circuit, so a series that is new and above zero counts as an increase too.
+      # After a restart of Prometheus that loses its data, this can fire for a counter that was above zero already.
+      - alert: KafkaCircuitOpened
+        expr: >
+          sum(increase(ft_circuitbreaker_opened_total{method=~".*AccreditationEventPublisherImpl.*"}[5m])) > 0
+          or sum(ft_circuitbreaker_opened_total{method=~".*AccreditationEventPublisherImpl.*"}
+            unless ft_circuitbreaker_opened_total offset 5m) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: The Kafka circuit breaker opened in the last 5 minutes; while open it turns submissions and decisions away.
+
+      - alert: DatabaseCircuitOpened
+        expr: >
+          sum(increase(ft_circuitbreaker_opened_total{method=~".*[.]persistence[.].*"}[5m])) > 0
+          or sum(ft_circuitbreaker_opened_total{method=~".*[.]persistence[.].*"}
+            unless ft_circuitbreaker_opened_total offset 5m) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: The database circuit breaker opened in the last 5 minutes; while open it turns requests and the consumer away.
+
+      # Every dead letter needs someone to look at it, and the events behind it may be rejected until it is replayed.
+      - alert: EventsDeadLettered
+        expr: >
+          sum(increase(accreditation_dead_lettered_events_total[5m])) > 0
+          or sum(accreditation_dead_lettered_events_total unless accreditation_dead_lettered_events_total offset 5m) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Messages went to the dead-letter topic in the last 5 minutes.
+
+      - alert: ConsumerFallingBehind
+        expr: sum(kafka_consumer_fetch_manager_records_lag{topic="accreditation-status-events"}) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: The consumer has been more than 100 events behind for 5 minutes.

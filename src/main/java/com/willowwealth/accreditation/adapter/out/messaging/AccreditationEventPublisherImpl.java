@@ -7,6 +7,8 @@ import com.willowwealth.accreditation.application.exception.EventPublicationExce
 import com.willowwealth.accreditation.application.port.out.AccreditationEventPublisher;
 import com.willowwealth.accreditation.config.MessagingConfig;
 import com.willowwealth.accreditation.domain.event.AccreditationEvent;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics;
 import io.quarkus.kafka.client.serialization.ObjectMapperSerializer;
 import io.smallrye.faulttolerance.api.ApplyGuard;
 import jakarta.annotation.PreDestroy;
@@ -45,12 +47,13 @@ public class AccreditationEventPublisherImpl implements AccreditationEventPublis
     private static final String TRACE_ID = "trace_id";
 
     private final Producer<String, AccreditationEventMessage> producer;
+    private final KafkaClientMetrics producerMetrics;
     private final AccreditationEventMessageMapper mapper;
     private final String topic;
     private final Duration acknowledgementTimeout;
 
     AccreditationEventPublisherImpl(AccreditationEventMessageMapper mapper, ObjectMapper objectMapper,
-                                    MessagingConfig config) {
+                                    MessagingConfig config, MeterRegistry registry) {
         this.mapper = mapper;
         this.topic = config.topic();
         this.producer = new KafkaProducer<>(Map.of(
@@ -62,6 +65,9 @@ public class AccreditationEventPublisherImpl implements AccreditationEventPublis
                 REQUEST_TIMEOUT_MS_CONFIG, String.valueOf(config.requestTimeout().toMillis()),
                 DELIVERY_TIMEOUT_MS_CONFIG, String.valueOf(config.deliveryTimeout().toMillis())),
                 new StringSerializer(), new ObjectMapperSerializer<>(objectMapper));
+        // Quarkus binds the metrics of the clients it creates itself; this one is ours.
+        this.producerMetrics = new KafkaClientMetrics(producer);
+        producerMetrics.bindTo(registry);
         // Once send() has returned, the producer settles the record within delivery.timeout.ms. Waiting a little
         // longer means the answer is always the producer's own; the extra second only guards against one that hangs.
         this.acknowledgementTimeout = config.deliveryTimeout().plusSeconds(1);
@@ -110,6 +116,7 @@ public class AccreditationEventPublisherImpl implements AccreditationEventPublis
 
     @PreDestroy
     void close() {
+        producerMetrics.close();
         producer.close(Duration.ofSeconds(5));
     }
 

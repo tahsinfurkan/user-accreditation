@@ -267,6 +267,21 @@
         <p>HTTP, JVM and Kafka client metrics come with them, and so do the retry, circuit breaker and rate limit
             metrics of SmallRye Fault Tolerance.</p>
 
+        <h2>Alerts</h2>
+        <p>Prometheus evaluates these rules and lists them at <code>http://localhost:9090/alerts</code>; the Grafana
+            dashboard shows them at the top.</p>
+        <table>
+            <thead><tr><th>Alert</th><th>Fires when</th></tr></thead>
+            <tbody>
+            <tr><td><code>ServiceDown</code></td><td>Prometheus hasn't reached the service for a minute</td></tr>
+            <tr><td><code>HighServerErrorRate</code></td><td>more than 5% of the requests of the last 5 minutes failed with a 5xx, for 2 minutes</td></tr>
+            <tr><td><code>KafkaCircuitOpened</code></td><td>the Kafka circuit breaker opened in the last 5 minutes</td></tr>
+            <tr><td><code>DatabaseCircuitOpened</code></td><td>the database circuit breaker opened in the last 5 minutes</td></tr>
+            <tr><td><code>EventsDeadLettered</code></td><td>a message went to the dead-letter topic in the last 5 minutes</td></tr>
+            <tr><td><code>ConsumerFallingBehind</code></td><td>the consumer has been more than 100 events behind for 5 minutes</td></tr>
+            </tbody>
+        </table>
+
         <h2>Health</h2>
         <p><a href="/q/health">/q/health</a> reports liveness and readiness. <code>/q/health/ready</code> is
             <code>UP</code> once PostgreSQL and Kafka can be reached; <code>run.sh</code> waits on it. Redis is left

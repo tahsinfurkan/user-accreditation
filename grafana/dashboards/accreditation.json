@@ -14,6 +14,140 @@
   "editable": true,
   "panels": [
     {
+      "id": 21,
+      "type": "row",
+      "title": "Alerts",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 22,
+      "type": "stat",
+      "title": "Firing alerts",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Rules in prometheus/alerts.yml; Prometheus lists them at http://localhost:9090/alerts.",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(ALERTS{alertstate=\"firing\"}) or vector(0)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 23,
+      "type": "table",
+      "title": "Alerts firing or pending",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 18,
+        "x": 6,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "ALERTS",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "instance": true,
+              "job": true
+            },
+            "indexByName": {
+              "alertname": 0,
+              "alertstate": 1,
+              "severity": 2
+            },
+            "renameByName": {
+              "alertname": "Alert",
+              "alertstate": "State",
+              "severity": "Severity"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
       "type": "row",
       "title": "Accreditations",
       "collapsed": false,
@@ -21,7 +155,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 9
       },
       "panels": [],
       "id": 1
@@ -37,7 +171,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 1
+        "y": 10
       },
       "targets": [
         {
@@ -86,7 +220,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 1
+        "y": 10
       },
       "targets": [
         {
@@ -135,7 +269,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 1
+        "y": 10
       },
       "targets": [
         {
@@ -184,7 +318,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 1
+        "y": 10
       },
       "targets": [
         {
@@ -233,7 +367,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 5
+        "y": 14
       },
       "targets": [
         {
@@ -284,7 +418,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 5
+        "y": 14
       },
       "targets": [
         {
@@ -335,7 +469,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 13
+        "y": 22
       },
       "targets": [
         {
@@ -386,7 +520,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 13
+        "y": 22
       },
       "targets": [
         {
@@ -434,7 +568,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 30
       },
       "panels": [],
       "id": 10
@@ -450,7 +584,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 22
+        "y": 31
       },
       "targets": [
         {
@@ -499,7 +633,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 22
+        "y": 31
       },
       "targets": [
         {
@@ -545,7 +679,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 30
+        "y": 39
       },
       "panels": [],
       "id": 13
@@ -561,7 +695,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 31
+        "y": 40
       },
       "targets": [
         {
@@ -611,7 +745,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 31
+        "y": 40
       },
       "targets": [
         {
@@ -662,7 +796,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 39
+        "y": 48
       },
       "targets": [
         {
@@ -712,7 +846,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 39
+        "y": 48
       },
       "targets": [
         {
@@ -759,7 +893,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 47
+        "y": 56
       },
       "panels": [],
       "id": 18
@@ -775,7 +909,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 48
+        "y": 57
       },
       "targets": [
         {
@@ -824,7 +958,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 48
+        "y": 57
       },
       "targets": [
         {
@@ -861,6 +995,65 @@
         }
       },
       "id": 20
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "Events published per second",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "The publisher's own Kafka producer: records acknowledged and records that failed.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 65
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "sent",
+          "expr": "sum(rate(kafka_producer_record_send_total{client_id=\"accreditation-event-publisher\"}[1m]))"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "failed",
+          "expr": "sum(rate(kafka_producer_record_error_total{client_id=\"accreditation-event-publisher\"}[1m]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     }
   ]
 }

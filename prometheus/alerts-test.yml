@@ -1,0 +1,160 @@
+# Unit tests for alerts.yml:
+# docker run --rm --entrypoint promtool -v "$PWD/prometheus:/etc/prometheus:ro" prom/prometheus:v3.15.1 test rules /etc/prometheus/alerts-test.yml
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: a dead letter raises an alert for five minutes
+    interval: 1m
+    input_series:
+      - series: 'accreditation_dead_lettered_events_total{reason="unreadable"}'
+        values: '0 0 0 1 1 1 1 1 1 1 1'
+      - series: 'accreditation_dead_lettered_events_total{reason="failed"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: EventsDeadLettered
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Messages went to the dead-letter topic in the last 5 minutes.
+      - eval_time: 10m
+        alertname: EventsDeadLettered
+        exp_alerts: []
+
+  - name: the Kafka circuit opening raises an alert for five minutes
+    interval: 1m
+    input_series:
+      - series: 'ft_circuitbreaker_opened_total{method="com.willowwealth.accreditation.adapter.out.messaging.AccreditationEventPublisherImpl.send"}'
+        values: '0 0 1 1 1 1 1 1 1 1'
+      - series: 'ft_circuitbreaker_opened_total{method="com.willowwealth.accreditation.adapter.out.persistence.repository.AccreditationRepositoryImpl.findById"}'
+        values: '0x9'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: KafkaCircuitOpened
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: The Kafka circuit breaker opened in the last 5 minutes; while open it turns submissions and decisions away.
+      - eval_time: 3m
+        alertname: DatabaseCircuitOpened
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: KafkaCircuitOpened
+        exp_alerts: []
+
+  - name: the database circuit opening raises an alert
+    interval: 1m
+    input_series:
+      - series: 'ft_circuitbreaker_opened_total{method="com.willowwealth.accreditation.adapter.out.persistence.repository.AccreditationRepositoryImpl.findById"}'
+        values: '0 0 1 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: DatabaseCircuitOpened
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: The database circuit breaker opened in the last 5 minutes; while open it turns requests and the consumer away.
+
+  - name: the service is reported down after a minute without a scrape
+    interval: 1m
+    input_series:
+      - series: 'up{job="user-accreditation-service",instance="app:9999"}'
+        values: '1 0 0 0'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: ServiceDown
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: user-accreditation-service
+              instance: app:9999
+            exp_annotations:
+              summary: Prometheus has not reached the service for a minute.
+
+  - name: one request in ten failing with a 5xx raises an alert
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{status="503"}'
+        values: '0+6x10'
+      - series: 'http_server_requests_seconds_count{status="200"}'
+        values: '0+54x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: HighServerErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: More than 5% of the requests of the last 5 minutes were answered with a 5xx.
+
+  - name: one request in a hundred failing does not
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{status="503"}'
+        values: '0+1x10'
+      - series: 'http_server_requests_seconds_count{status="200"}'
+        values: '0+99x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: HighServerErrorRate
+        exp_alerts: []
+
+  - name: a consumer that stays behind raises an alert after five minutes
+    interval: 1m
+    input_series:
+      - series: 'kafka_consumer_fetch_manager_records_lag{topic="accreditation-status-events",partition="0"}'
+        values: '150x10'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ConsumerFallingBehind
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: ConsumerFallingBehind
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: The consumer has been more than 100 events behind for 5 minutes.
+
+  - name: a circuit metric that first shows up above zero still raises the alert
+    interval: 1m
+    input_series:
+      - series: 'ft_circuitbreaker_opened_total{method="com.willowwealth.accreditation.adapter.out.messaging.AccreditationEventPublisherImpl.send"}'
+        values: '_ _ 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: KafkaCircuitOpened
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: The Kafka circuit breaker opened in the last 5 minutes; while open it turns submissions and decisions away.
+      - eval_time: 10m
+        alertname: KafkaCircuitOpened
+        exp_alerts: []
+
+  - name: a dead-letter counter that first shows up above zero still raises the alert
+    interval: 1m
+    input_series:
+      - series: 'accreditation_dead_lettered_events_total{reason="unreadable"}'
+        values: '_ _ 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: EventsDeadLettered
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Messages went to the dead-letter topic in the last 5 minutes.
+      - eval_time: 10m
+        alertname: EventsDeadLettered
+        exp_alerts: []

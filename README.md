@@ -173,9 +173,10 @@ Either way, I would also accept an `Idempotency-Key` so a retried request can't 
   - `accreditation_submissions_total`, `accreditation_finalizations_total` and `accreditation_expiries_total`
   - `accreditation_projected_events_total{result, reason}`
   - `accreditation_dead_lettered_events_total{reason}`
-  - HTTP, JVM and Kafka client metrics
+  - HTTP, JVM and Kafka client metrics, including the publisher's own producer
   - the retry, circuit breaker and rate limit metrics of SmallRye Fault Tolerance
 - **Dashboard.** Grafana at http://localhost:3000 opens on a dashboard of these metrics, with no login: the accreditation counters, HTTP traffic and response times, rate limits, circuit breakers, retries, consumer lag and heap.
+- **Alerts.** Prometheus evaluates the rules in `prometheus/alerts.yml` and lists them at http://localhost:9090/alerts; the Grafana dashboard shows them at the top. They cover the service not being scraped, more than 5% of requests failing with a 5xx, a Kafka or database circuit that opened, any dead letter, and a consumer that stays more than 100 events behind. There is no Alertmanager, so nobody is notified.
 - **Health.** `/q/health/ready` reports whether PostgreSQL and Kafka can be reached; `run.sh` waits on it. Redis is left out, because the service works without it.
 
 ## Tests
@@ -187,6 +188,11 @@ Either way, I would also accept an `Idempotency-Key` so a retried request can't 
 This needs JDK 21 and Docker. Testcontainers starts PostgreSQL and Redis, and Quarkus starts a Kafka broker.
 
 - **Unit tests.** The domain and the services are tested with in-memory fakes.
+- **Alert rules.** `prometheus/alerts-test.yml` feeds made-up series to the rules and checks which alerts fire:
+
+  ```bash
+  docker run --rm --entrypoint promtool -v "$PWD/prometheus:/etc/prometheus:ro" prom/prometheus:v3.15.1 test rules /etc/prometheus/alerts-test.yml
+  ```
 - **Integration tests.** The endpoints, the consumer (retries, the dead-letter topic), the expiry job, the cache, the circuit breakers and the rate limits are tested with `@QuarkusTest` against real containers.
 
 ## AI usage

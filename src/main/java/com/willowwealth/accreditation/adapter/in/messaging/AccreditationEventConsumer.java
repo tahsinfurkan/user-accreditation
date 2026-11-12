@@ -7,7 +7,9 @@ import com.willowwealth.accreditation.application.port.in.usecase.ApplyAccredita
 import com.willowwealth.accreditation.domain.event.AccreditationEvent;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tags;
+import io.quarkus.runtime.StartupEvent;
 import io.smallrye.common.annotation.Blocking;
+import jakarta.enterprise.event.Observes;
 import io.smallrye.faulttolerance.api.ExponentialBackoff;
 import jakarta.enterprise.context.ApplicationScoped;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +36,13 @@ public class AccreditationEventConsumer {
     private final ApplyAccreditationEventUseCase applyAccreditationEvent;
     private final AccreditationEventMessageMapper mapper;
     private final MeterRegistry registry;
+
+    // A counter that first shows up at 1 has no increase to Prometheus, so an alert on the first dead letter would
+    // never fire. Both start at zero when the application starts; the deserializer counts the unreadable ones.
+    void registerDeadLetterCounters(@Observes StartupEvent event) {
+        registry.counter(DEAD_LETTERED_EVENTS, "reason", "failed");
+        registry.counter(DEAD_LETTERED_EVENTS, "reason", "unreadable");
+    }
 
     // @Blocking keeps the order of each partition. @RunOnVirtualThread would process
     // messages concurrently and could apply two events of the same user out of order.
