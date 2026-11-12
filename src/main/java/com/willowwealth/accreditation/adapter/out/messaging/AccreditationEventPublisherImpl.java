@@ -53,10 +53,13 @@ public class AccreditationEventPublisherImpl implements AccreditationEventPublis
     void send(AccreditationEventMessage message) {
         try {
             // Keyed by user, so all events of one user land on the same partition and stay in order.
+            // The producer gives up on a record by itself: send() blocks for at most max.block.ms, and the connector
+            // retries only until delivery.timeout.ms has passed, each try taking up to delivery.timeout.ms again.
+            // The send timeout is longer than all of that, so a failure here is the producer's own and it won't
+            // send the record after the caller has been told it failed.
             emitter.send(Record.of(message.userId(), message)).await().atMost(sendTimeout);
         } catch (RuntimeException e) {
-            throw new EventPublicationException(
-                    "Event %s was not acknowledged by Kafka within %s".formatted(message.eventId(), sendTimeout), e);
+            throw new EventPublicationException("Kafka did not acknowledge event %s".formatted(message.eventId()), e);
         }
     }
 }

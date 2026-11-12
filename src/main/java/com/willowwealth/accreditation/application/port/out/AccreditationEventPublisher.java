@@ -8,8 +8,8 @@ public interface AccreditationEventPublisher {
     /**
      * Returns only after the broker has acknowledged the event.
      *
-     * @throws EventPublicationException if the event was not acknowledged in time, or not sent at all because Kafka
-     *                                   kept failing
+     * @throws EventPublicationException if Kafka did not take the event; the publisher has stopped trying by then,
+     *                                   so it does not send the event later
      */
     void publish(AccreditationEvent event);
 }

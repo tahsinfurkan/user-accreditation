@@ -7,6 +7,7 @@ import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import io.smallrye.faulttolerance.api.CircuitBreakerMaintenance;
 import jakarta.inject.Inject;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -28,6 +29,22 @@ class KafkaCircuitBreakerTest {
 
     @Inject
     CircuitBreakerMaintenance circuitBreakers;
+
+    @BeforeEach
+    void closeTheCircuit() {
+        circuitBreakers.resetAll();
+    }
+
+    @Test
+    void answersOnlyOnceTheProducerHasGivenUpOnTheEvent() {
+        var started = System.nanoTime();
+
+        submit().statusCode(503).header("Retry-After", "5");
+
+        // The send timeout is 10 seconds. An answer this early is the producer's own failure, so it has stopped trying
+        // and won't write the event after the client was told it failed.
+        assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(5));
+    }
 
     @Test
     void turnsSubmissionsAwayOnceKafkaKeepsFailingAndTriesAgainAfterTheDelay() {
@@ -52,13 +69,18 @@ class KafkaCircuitBreakerTest {
     }
 
     // Only the publisher's channel points to a port nobody listens on; everything else uses the test broker.
+    // Short producer limits make each submission fail within a fraction of a second.
     public static class KafkaUnreachable implements QuarkusTestProfile {
+
+        private static final String PRODUCER = "mp.messaging.outgoing.accreditation-events-out.";
 
         @Override
         public Map<String, String> getConfigOverrides() {
             return Map.of(
-                    "mp.messaging.outgoing.accreditation-events-out.bootstrap.servers", "localhost:1",
-                    "accreditation.messaging.send-timeout", "200ms");
+                    PRODUCER + "bootstrap.servers", "localhost:1",
+                    PRODUCER + "max.block.ms", "200",
+                    PRODUCER + "request.timeout.ms", "200",
+                    PRODUCER + "delivery.timeout.ms", "300");
         }
     }
 }
