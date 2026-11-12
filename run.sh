@@ -18,6 +18,7 @@ for _ in $(seq 1 90); do
         echo "Kafka UI:   http://localhost:8080"
         echo "Redis UI:   http://localhost:5540"
         echo "Prometheus: http://localhost:9090"
+        echo "Grafana:    http://localhost:3000"
         exit 0
     fi
     sleep 2

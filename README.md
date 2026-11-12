@@ -22,6 +22,7 @@ The script builds the service inside Docker, starts everything with `docker comp
 | Kafka UI | http://localhost:8080 |
 | Redis Insight | http://localhost:5540 |
 | Prometheus | http://localhost:9090 |
+| Grafana dashboard | http://localhost:3000 |
 
 PostgreSQL (5432), Redis (6379) and Kafka (9092) are published too, so these ports need to be free. `docker compose down` stops everything; add `-v` to drop the database as well.
 
@@ -172,6 +173,7 @@ Either way, I would also accept an `Idempotency-Key` so a retried request can't 
   - `accreditation_dead_lettered_events_total{reason}`
   - HTTP, JVM and Kafka client metrics
   - the retry, circuit breaker and rate limit metrics of SmallRye Fault Tolerance
+- **Dashboard.** Grafana at http://localhost:3000 opens on a dashboard of these metrics, with no login: the accreditation counters, HTTP traffic and response times, rate limits, circuit breakers, retries, consumer lag and heap.
 - **Health.** `/q/health/ready` reports whether PostgreSQL, Redis and Kafka can be reached; `run.sh` waits on it.
 
 ## Tests

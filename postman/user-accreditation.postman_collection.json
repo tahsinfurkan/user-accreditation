@@ -1,7 +1,7 @@
 {
 	"info": {
 		"_postman_id": "3f6b2c1e-9a4d-4b8e-8c27-5e1d0a7f4b92",
-		"name": "User Accreditation",
+		"name": "Tahsin Furkan Keles Willow Wealth Technical Assignment",
 		"description": "Requests for the user accreditation service.\n\nStart the stack from the project root with `./run.sh`. The API answers on http://localhost:9999 (`baseUrl`), Kafka UI on http://localhost:8080, Redis Insight on http://localhost:5540 and Prometheus on http://localhost:9090. The API itself is documented at http://localhost:9999/q/swagger-ui.\n\nSubmitting and finalizing answer 202: the change goes to Kafka first and the consumer writes it to the database a moment later. The scripts wait a second after each 202, so every folder can also be run top to bottom in the Collection Runner.\n\nEach admin endpoint accepts 10 requests a second and the client endpoint 100; beyond that the answer is 429 with `Retry-After`.\n\n`Submit accreditation` uses a new random `userId` each time and stores the `accreditationId` it gets back. The requests after it reuse both.\n\n`Prometheus metrics` comes last, so the counters it checks have been through the requests before it. Prometheus scrapes the same endpoint every 5 seconds.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},

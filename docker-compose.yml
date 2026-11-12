@@ -122,5 +122,21 @@ services:
     depends_on:
       - app
 
+  grafana:
+    image: grafana/grafana:13.3.0
+    ports:
+      - "3000:3000"
+    environment:
+      # Opens straight on the dashboard without a login, which is fine on a laptop but not on a shared server.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/accreditation.json
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
 volumes:
   postgres-data:
