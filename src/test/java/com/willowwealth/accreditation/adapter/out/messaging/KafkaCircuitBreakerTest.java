@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.stream.IntStream;
 
 import static com.willowwealth.accreditation.adapter.in.handler.ErrorBodyAssertions.assertErrorBody;
 import static com.willowwealth.accreditation.adapter.in.resource.AccreditationRequests.newUserId;
@@ -35,15 +37,24 @@ class KafkaCircuitBreakerTest {
         circuitBreakers.resetAll();
     }
 
+    // Each request sends and waits on its own thread, so all of them fail within max.block (500 ms) instead of
+    // queueing behind each other. A queued event could still be sent after its request had been answered with 503.
     @Test
-    void answersOnlyOnceTheProducerHasGivenUpOnTheEvent() {
-        var started = System.nanoTime();
+    void answersConcurrentSubmissionsWithoutQueueingThem() throws Exception {
+        // The first submission also starts the producer, which is not what is measured here.
+        submit().statusCode(503);
 
-        submit().statusCode(503).header("Retry-After", "5");
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var started = System.nanoTime();
+            var answers = IntStream.range(0, 8)
+                    .mapToObj(i -> executor.submit(() -> submit().statusCode(503).extract().header("Retry-After")))
+                    .toList();
 
-        // The send timeout is 10 seconds. An answer this early is the producer's own failure, so it has stopped trying
-        // and won't write the event after the client was told it failed.
-        assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(5));
+            for (var answer : answers) {
+                assertThat(answer.get()).isEqualTo("5");
+            }
+            assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(2));
+        }
     }
 
     @Test
@@ -68,19 +79,19 @@ class KafkaCircuitBreakerTest {
                 .then();
     }
 
-    // Only the publisher's channel points to a port nobody listens on; everything else uses the test broker.
-    // Short producer limits make each submission fail within a fraction of a second.
+    // Only the publisher points to a port nobody listens on; the consumer uses the test broker. Short producer limits
+    // make each submission fail within half a second.
     public static class KafkaUnreachable implements QuarkusTestProfile {
 
-        private static final String PRODUCER = "mp.messaging.outgoing.accreditation-events-out.";
+        private static final String MESSAGING = "accreditation.messaging.";
 
         @Override
         public Map<String, String> getConfigOverrides() {
             return Map.of(
-                    PRODUCER + "bootstrap.servers", "localhost:1",
-                    PRODUCER + "max.block.ms", "200",
-                    PRODUCER + "request.timeout.ms", "200",
-                    PRODUCER + "delivery.timeout.ms", "300");
+                    MESSAGING + "bootstrap-servers", "localhost:1",
+                    MESSAGING + "max-block", "500ms",
+                    MESSAGING + "request-timeout", "200ms",
+                    MESSAGING + "delivery-timeout", "300ms");
         }
     }
 }

@@ -1,38 +1,66 @@
 package com.willowwealth.accreditation.adapter.out.messaging;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.willowwealth.accreditation.adapter.messaging.mapper.AccreditationEventMessageMapper;
 import com.willowwealth.accreditation.adapter.messaging.message.AccreditationEventMessage;
 import com.willowwealth.accreditation.application.exception.EventPublicationException;
 import com.willowwealth.accreditation.application.port.out.AccreditationEventPublisher;
+import com.willowwealth.accreditation.config.MessagingConfig;
 import com.willowwealth.accreditation.domain.event.AccreditationEvent;
+import io.quarkus.kafka.client.serialization.ObjectMapperSerializer;
 import io.smallrye.faulttolerance.api.ApplyGuard;
-import io.smallrye.reactive.messaging.MutinyEmitter;
-import io.smallrye.reactive.messaging.kafka.Record;
+import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import lombok.extern.slf4j.Slf4j;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.StringSerializer;
 import org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException;
-import org.eclipse.microprofile.reactive.messaging.Channel;
 
 import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static com.willowwealth.accreditation.config.CircuitBreakerProducer.KAFKA;
+import static org.apache.kafka.clients.producer.ProducerConfig.ACKS_CONFIG;
+import static org.apache.kafka.clients.producer.ProducerConfig.BOOTSTRAP_SERVERS_CONFIG;
+import static org.apache.kafka.clients.producer.ProducerConfig.CLIENT_ID_CONFIG;
+import static org.apache.kafka.clients.producer.ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG;
+import static org.apache.kafka.clients.producer.ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG;
+import static org.apache.kafka.clients.producer.ProducerConfig.MAX_BLOCK_MS_CONFIG;
+import static org.apache.kafka.clients.producer.ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG;
 
+// A producer of its own instead of a SmallRye emitter: the emitter sends every record from one thread, so during an
+// outage records wait behind each other and could still be sent after the request that published them had been
+// answered with 503. Here each request sends on its own thread and waits for its own record.
 @Slf4j
 @ApplicationScoped
 public class AccreditationEventPublisherImpl implements AccreditationEventPublisher {
 
-    private final MutinyEmitter<Record<String, AccreditationEventMessage>> emitter;
+    private final Producer<String, AccreditationEventMessage> producer;
     private final AccreditationEventMessageMapper mapper;
-    private final Duration sendTimeout;
+    private final String topic;
+    private final Duration acknowledgementTimeout;
 
-    AccreditationEventPublisherImpl(
-            @Channel("accreditation-events-out") MutinyEmitter<Record<String, AccreditationEventMessage>> emitter,
-            AccreditationEventMessageMapper mapper,
-            @ConfigProperty(name = "accreditation.messaging.send-timeout") Duration sendTimeout) {
-        this.emitter = emitter;
+    AccreditationEventPublisherImpl(AccreditationEventMessageMapper mapper, ObjectMapper objectMapper,
+                                    MessagingConfig config) {
         this.mapper = mapper;
-        this.sendTimeout = sendTimeout;
+        this.topic = config.topic();
+        this.producer = new KafkaProducer<>(Map.of(
+                BOOTSTRAP_SERVERS_CONFIG, config.bootstrapServers(),
+                CLIENT_ID_CONFIG, "accreditation-event-publisher",
+                ACKS_CONFIG, "all",
+                ENABLE_IDEMPOTENCE_CONFIG, "true",
+                MAX_BLOCK_MS_CONFIG, String.valueOf(config.maxBlock().toMillis()),
+                REQUEST_TIMEOUT_MS_CONFIG, String.valueOf(config.requestTimeout().toMillis()),
+                DELIVERY_TIMEOUT_MS_CONFIG, String.valueOf(config.deliveryTimeout().toMillis())),
+                new StringSerializer(), new ObjectMapperSerializer<>(objectMapper));
+        // Once send() has returned, the producer settles the record within delivery.timeout.ms. Waiting a little
+        // longer means the answer is always the producer's own; the extra second only guards against one that hangs.
+        this.acknowledgementTimeout = config.deliveryTimeout().plusSeconds(1);
     }
 
     @Override
@@ -52,14 +80,26 @@ public class AccreditationEventPublisherImpl implements AccreditationEventPublis
     @ApplyGuard(KAFKA)
     void send(AccreditationEventMessage message) {
         try {
-            // Keyed by user, so all events of one user land on the same partition and stay in order.
-            // The producer gives up on a record by itself: send() blocks for at most max.block.ms, and the connector
-            // retries only until delivery.timeout.ms has passed, each try taking up to delivery.timeout.ms again.
-            // The send timeout is longer than all of that, so a failure here is the producer's own and it won't
-            // send the record after the caller has been told it failed.
-            emitter.send(Record.of(message.userId(), message)).await().atMost(sendTimeout);
-        } catch (RuntimeException e) {
-            throw new EventPublicationException("Kafka did not acknowledge event %s".formatted(message.eventId()), e);
+            // Keyed by user, so all events of one user land on the same partition and stay in order. send() itself
+            // blocks for at most max.block.ms while the producer has no metadata for the topic.
+            producer.send(new ProducerRecord<>(topic, message.userId(), message))
+                    .get(acknowledgementTimeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw notAcknowledged(message, e);
+        } catch (ExecutionException e) {
+            throw notAcknowledged(message, e.getCause());
+        } catch (TimeoutException | RuntimeException e) {
+            throw notAcknowledged(message, e);
         }
+    }
+
+    @PreDestroy
+    void close() {
+        producer.close(Duration.ofSeconds(5));
+    }
+
+    private static EventPublicationException notAcknowledged(AccreditationEventMessage message, Throwable cause) {
+        return new EventPublicationException("Kafka did not acknowledge event %s".formatted(message.eventId()), cause);
     }
 }
