@@ -3,6 +3,7 @@ package com.willowwealth.accreditation.adapter.in.scheduler;
 import com.willowwealth.accreditation.application.port.in.command.ExpireConfirmedAccreditationsCommand;
 import com.willowwealth.accreditation.application.port.in.usecase.ExpireConfirmedAccreditationsUseCase;
 import com.willowwealth.accreditation.config.AccreditationExpiryConfig;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.quarkus.scheduler.Scheduled;
 import io.smallrye.common.annotation.RunOnVirtualThread;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -27,6 +28,7 @@ public class AccreditationExpiryJob {
 
     private final ExpireConfirmedAccreditationsUseCase expireConfirmedAccreditations;
     private final AccreditationExpiryConfig config;
+    private final MeterRegistry registry;
 
     // The first run starts with the application, so whatever expired while it was down doesn't wait another interval.
     // SKIP only stops overlapping runs within one instance; across instances the consumer's CAS makes duplicates
@@ -39,6 +41,7 @@ public class AccreditationExpiryJob {
         try {
             var expiries = expireConfirmedAccreditations.expire(
                     new ExpireConfirmedAccreditationsCommand(config.confirmedTtl(), config.batchSize()));
+            registry.counter("accreditation.expiries").increment(expiries);
             log.info("Expiry run finished in {} ms, expiries published: {}", millisSince(started), expiries);
         } catch (RuntimeException e) {
             // Usually the database could not be read. Whatever is still CONFIRMED is picked up by the next run.

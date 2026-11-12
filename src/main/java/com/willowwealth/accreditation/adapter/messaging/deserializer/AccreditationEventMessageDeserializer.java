@@ -1,6 +1,7 @@
 package com.willowwealth.accreditation.adapter.messaging.deserializer;
 
 import com.willowwealth.accreditation.adapter.messaging.message.AccreditationEventMessage;
+import io.micrometer.core.instrument.Metrics;
 import io.quarkus.kafka.client.serialization.ObjectMapperDeserializer;
 import lombok.extern.slf4j.Slf4j;
 
@@ -19,6 +20,8 @@ public class AccreditationEventMessageDeserializer extends ObjectMapperDeseriali
             return super.deserialize(topic, data);
         } catch (RuntimeException e) {
             log.error("Could not read a message from {}, moving it to the dead-letter topic: {}", topic, e.getMessage());
+            // Kafka creates this class, not CDI, so it counts through the global registry, which Quarkus exports too.
+            Metrics.counter("accreditation.dead.lettered.events", "reason", "unreadable").increment();
             throw e;
         }
     }

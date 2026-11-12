@@ -11,6 +11,7 @@ import com.willowwealth.accreditation.application.port.in.usecase.FinalizeAccred
 import com.willowwealth.accreditation.application.port.in.usecase.GetAccreditationHistoryUseCase;
 import com.willowwealth.accreditation.application.port.in.usecase.SubmitAccreditationUseCase;
 import com.willowwealth.accreditation.domain.model.AccreditationId;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.smallrye.common.annotation.RunOnVirtualThread;
 import io.smallrye.faulttolerance.api.ApplyGuard;
 import jakarta.validation.Valid;
@@ -60,6 +61,7 @@ public class AdminAccreditationResource {
     private final GetAccreditationHistoryUseCase getAccreditationHistory;
     private final AccreditationRequestMapper requestMapper;
     private final AccreditationResponseMapper responseMapper;
+    private final MeterRegistry registry;
 
     @POST
     @RunOnVirtualThread
@@ -77,6 +79,7 @@ public class AdminAccreditationResource {
     public RestResponse<AccreditationIdResponse> submit(
             @Valid @NotNull(message = "must not be empty") SubmitAccreditationRequest body) {
         var id = submitAccreditation.submit(requestMapper.toCommand(body));
+        registry.counter("accreditation.submissions", "type", body.accreditationType().name()).increment();
         return RestResponse.status(RestResponse.Status.ACCEPTED, new AccreditationIdResponse(id.value()));
     }
 
@@ -102,6 +105,7 @@ public class AdminAccreditationResource {
             @Valid @NotNull(message = "must not be empty") FinalizeAccreditationRequest body) {
         var id = UUID.fromString(accreditationId);
         finalizeAccreditation.finalizeAccreditation(requestMapper.toCommand(id, body));
+        registry.counter("accreditation.finalizations", "outcome", body.outcome().name()).increment();
         return RestResponse.status(RestResponse.Status.ACCEPTED, new AccreditationIdResponse(id));
     }
 

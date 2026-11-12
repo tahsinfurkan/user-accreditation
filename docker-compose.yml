@@ -113,5 +113,14 @@ services:
       kafka-init:
         condition: service_completed_successfully
 
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - app
+
 volumes:
   postgres-data:

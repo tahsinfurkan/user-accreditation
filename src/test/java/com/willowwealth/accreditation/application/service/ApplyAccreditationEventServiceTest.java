@@ -12,6 +12,11 @@ import org.junit.jupiter.api.Test;
 import java.time.ZonedDateTime;
 import java.util.UUID;
 
+import static com.willowwealth.accreditation.application.port.in.result.ProjectionResult.APPLIED;
+import static com.willowwealth.accreditation.application.port.in.result.ProjectionResult.DUPLICATE;
+import static com.willowwealth.accreditation.application.port.in.result.ProjectionResult.PENDING_EXISTS;
+import static com.willowwealth.accreditation.application.port.in.result.ProjectionResult.STATUS_CHANGED;
+import static com.willowwealth.accreditation.application.port.in.result.ProjectionResult.UNKNOWN_ACCREDITATION;
 import static com.willowwealth.accreditation.domain.event.ChangeOrigin.ADMIN;
 import static com.willowwealth.accreditation.domain.model.AccreditationStatus.CONFIRMED;
 import static com.willowwealth.accreditation.domain.model.AccreditationStatus.FAILED;
@@ -57,8 +62,9 @@ class ApplyAccreditationEventServiceTest {
         var event = submitted();
 
         service.apply(event);
-        service.apply(event);
+        var result = service.apply(event);
 
+        assertThat(result).isEqualTo(DUPLICATE);
         assertThat(accreditations.inserts).isEqualTo(1);
         assertThat(history.changes).hasSize(1);
     }
@@ -69,8 +75,9 @@ class ApplyAccreditationEventServiceTest {
         var second = submitted();
 
         service.apply(first);
-        service.apply(second);
+        var result = service.apply(second);
 
+        assertThat(result).isEqualTo(PENDING_EXISTS);
         assertThat(accreditations.byId).containsOnlyKeys(first.accreditationId());
         assertThat(history.changes).extracting(StatusChange::eventId).containsExactly(first.eventId());
     }
@@ -81,8 +88,9 @@ class ApplyAccreditationEventServiceTest {
         service.apply(submission);
         var change = recorded(submission).changeStatus(CONFIRMED, ADMIN, DECIDED_AT);
 
-        service.apply(change);
+        var result = service.apply(change);
 
+        assertThat(result).isEqualTo(APPLIED);
         var accreditation = recorded(submission);
         assertThat(accreditation.status()).isEqualTo(CONFIRMED);
         assertThat(accreditation.updatedAt()).isEqualTo(DECIDED_AT);
@@ -97,8 +105,9 @@ class ApplyAccreditationEventServiceTest {
         var change = recorded(submission).changeStatus(CONFIRMED, ADMIN, DECIDED_AT);
 
         service.apply(change);
-        service.apply(change);
+        var result = service.apply(change);
 
+        assertThat(result).isEqualTo(DUPLICATE);
         assertThat(recorded(submission).status()).isEqualTo(CONFIRMED);
         assertThat(history.changes).extracting(StatusChange::eventId).containsExactly(submission.eventId(), change.eventId());
     }
@@ -112,8 +121,9 @@ class ApplyAccreditationEventServiceTest {
         var fail = recorded(submission).changeStatus(FAILED, ADMIN, DECIDED_AT.plusSeconds(1));
 
         service.apply(confirm);
-        service.apply(fail);
+        var result = service.apply(fail);
 
+        assertThat(result).isEqualTo(STATUS_CHANGED);
         assertThat(recorded(submission).status()).isEqualTo(CONFIRMED);
         assertThat(history.changes).extracting(StatusChange::eventId).containsExactly(submission.eventId(), confirm.eventId());
     }
@@ -123,8 +133,9 @@ class ApplyAccreditationEventServiceTest {
         var change = new AccreditationStatusChanged(UUID.randomUUID(), AccreditationId.newId(), USER, BY_NET_WORTH,
                 PENDING, CONFIRMED, ADMIN, DECIDED_AT);
 
-        service.apply(change);
+        var result = service.apply(change);
 
+        assertThat(result).isEqualTo(UNKNOWN_ACCREDITATION);
         assertThat(accreditations.byId).isEmpty();
         assertThat(history.changes).isEmpty();
     }

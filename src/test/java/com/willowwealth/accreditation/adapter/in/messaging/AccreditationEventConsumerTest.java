@@ -3,6 +3,7 @@ package com.willowwealth.accreditation.adapter.in.messaging;
 import com.willowwealth.accreditation.adapter.messaging.mapper.AccreditationEventMessageMapper;
 import com.willowwealth.accreditation.adapter.out.persistence.repository.AccreditationRepositoryImpl;
 import com.willowwealth.accreditation.application.port.in.usecase.ApplyAccreditationEventUseCase;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.mockito.InjectSpy;
@@ -18,6 +19,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
+import static com.willowwealth.accreditation.adapter.in.Counters.count;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -32,6 +34,8 @@ class AccreditationEventConsumerTest {
 
     private static final String TOPIC = "accreditation-status-events";
     private static final String DEAD_LETTER_TOPIC = "accreditation-status-events-dlq";
+    private static final String DEAD_LETTERED = "accreditation.dead.lettered.events";
+    private static final String PROJECTED = "accreditation.projected.events";
 
     // Spies run the real code; a test makes them fail only for the event it sends.
     @InjectSpy
@@ -42,6 +46,9 @@ class AccreditationEventConsumerTest {
 
     @Inject
     AccreditationRepositoryImpl accreditations;
+
+    @Inject
+    MeterRegistry registry;
 
     @InjectKafkaCompanion
     KafkaCompanion kafka;
@@ -66,6 +73,7 @@ class AccreditationEventConsumerTest {
 
     @Test
     void deadLettersAnEventThatStillFailsAfterThreeRetries() {
+        var deadLettered = count(registry, DEAD_LETTERED, "reason", "failed");
         var userId = newUserId();
         var eventId = UUID.randomUUID();
         var accreditationId = UUID.randomUUID();
@@ -80,6 +88,7 @@ class AccreditationEventConsumerTest {
         assertThat(header(deadLetter, "dead-letter-topic")).isEqualTo(TOPIC);
         assertThat(header(deadLetter, "dead-letter-partition")).isNotBlank();
         assertThat(header(deadLetter, "dead-letter-offset")).isNotBlank();
+        assertThat(count(registry, DEAD_LETTERED, "reason", "failed")).isEqualTo(deadLettered + 1);
         verify(applyAccreditationEvent, times(4)).apply(argThat(event -> eventId.equals(event.eventId())));
         assertThat(QuarkusTransaction.requiringNew().call(() -> accreditations.findByIdOptional(accreditationId)))
                 .isEmpty();
@@ -100,10 +109,12 @@ class AccreditationEventConsumerTest {
     @Test
     void deadLettersUnreadableJsonAndStaysHealthy() {
         var key = newUserId();
+        var deadLettered = count(registry, DEAD_LETTERED, "reason", "unreadable");
 
         produce(key, "{\"event_id\": ");
 
         assertThat(firstDeadLetterFor(key).value()).isEqualTo("{\"event_id\": ");
+        assertThat(count(registry, DEAD_LETTERED, "reason", "unreadable")).isEqualTo(deadLettered + 1);
         given().when().get("/q/health").then().statusCode(200);
     }
 
@@ -111,11 +122,14 @@ class AccreditationEventConsumerTest {
     void doesNotDeadLetterARejectedEvent() {
         var userId = newUserId();
         var eventId = UUID.randomUUID();
+        var rejected = count(registry, PROJECTED, "result", "rejected", "reason", "unknown_accreditation");
 
         // The accreditation does not exist, so the projection rejects the change.
         produce(userId, statusChange(eventId, UUID.randomUUID(), userId));
 
         assertNothingDeadLetteredFor(userId);
+        assertThat(count(registry, PROJECTED, "result", "rejected", "reason", "unknown_accreditation"))
+                .isEqualTo(rejected + 1);
         verify(applyAccreditationEvent, times(1)).apply(argThat(event -> eventId.equals(event.eventId())));
     }
 

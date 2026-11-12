@@ -1,0 +1,9 @@
+global:
+  # Short, so a request made by hand shows up in the graphs right away.
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: user-accreditation-service
+    metrics_path: /q/metrics
+    static_configs:
+      - targets: ["app:9999"]

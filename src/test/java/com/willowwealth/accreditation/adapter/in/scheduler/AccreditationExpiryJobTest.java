@@ -5,6 +5,7 @@ import com.willowwealth.accreditation.adapter.out.persistence.repository.Accredi
 import com.willowwealth.accreditation.application.port.out.AccreditationEventPublisher;
 import com.willowwealth.accreditation.domain.event.AccreditationStatusChanged;
 import com.willowwealth.accreditation.domain.model.AccreditationStatus;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.mockito.InjectSpy;
@@ -18,6 +19,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
+import static com.willowwealth.accreditation.adapter.in.Counters.count;
 import static com.willowwealth.accreditation.domain.event.ChangeOrigin.SYSTEM_EXPIRY;
 import static com.willowwealth.accreditation.domain.model.AccreditationStatus.CONFIRMED;
 import static com.willowwealth.accreditation.domain.model.AccreditationStatus.EXPIRED;
@@ -47,6 +49,9 @@ class AccreditationExpiryJobTest {
     @InjectKafkaCompanion
     KafkaCompanion kafka;
 
+    @Inject
+    MeterRegistry registry;
+
     @Test
     void expiresWhatWasConfirmedMoreThanThirtyDaysAgo() {
         var userId = UUID.randomUUID().toString().replace("-", "");
@@ -64,6 +69,7 @@ class AccreditationExpiryJobTest {
                 record(userId, submission(pending, userId, now.minus(Duration.ofDays(40)))))
                 .awaitCompletion();
         waitForStatus(pending, PENDING);
+        var expiries = count(registry, "accreditation.expiries");
 
         job.expireConfirmedAccreditations();
 
@@ -74,6 +80,8 @@ class AccreditationExpiryJobTest {
                 && change.origin() == SYSTEM_EXPIRY));
         verify(publisher, never()).publish(argThat(event -> event.accreditationId().value().equals(stillValid)));
         verify(publisher, never()).publish(argThat(event -> event.accreditationId().value().equals(pending)));
+        // Old confirmed rows left by other tests can expire in the same run.
+        assertThat(count(registry, "accreditation.expiries")).isGreaterThanOrEqualTo(expiries + 1);
 
         waitForStatus(expiring, EXPIRED);
         assertThat(statusOf(stillValid)).isEqualTo(CONFIRMED);
